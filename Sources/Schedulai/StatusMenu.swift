@@ -1,7 +1,7 @@
 import AppKit
 import ServiceManagement
 
-/// The menu bar icon and its menu. A real NSMenu, as in Ember: macOS draws it
+/// The menu bar icon and its menu. A real NSMenu: macOS draws it
 /// with the system's glass, section headers and highlight, which a SwiftUI
 /// window panel only imitates.
 @MainActor
@@ -149,7 +149,7 @@ enum JobMenu {
     }
 }
 
-/// The menu's top, as in Ember: a title and a caption, in AppKit views so they
+/// The menu's top: a title and a caption, in AppKit views so they
 /// lay out inside an NSMenuItem.
 private final class HeaderView: NSView {
     private static let width: CGFloat = 280

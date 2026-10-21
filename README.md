@@ -10,9 +10,8 @@ the state of each job in the Dock, the menu bar and its window. It also ships a 
 skill, so you can ask a session to build the job for you: *"every Monday at 9, list my PRs
 still waiting on a review"*.
 
-Built with SwiftUI and AppKit for macOS 26 (Liquid Glass). The structure follows
-[Ember](https://github.com/liviulica/ember): a Swift package, `scripts/build-app.sh`, an
-ad-hoc-signed bundle.
+Built with SwiftUI and AppKit for macOS 26 (Liquid Glass): a Swift package,
+`scripts/build-app.sh`, an ad-hoc-signed bundle.
 
 ## A job is a folder
 

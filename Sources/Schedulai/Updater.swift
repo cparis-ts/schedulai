@@ -4,7 +4,7 @@ import Darwin
 import Foundation
 import Observation
 
-/// Installs new versions on its own, as Ember does: checks the repository's
+/// Installs new versions on its own: checks the repository's
 /// latest GitHub release shortly after launch and then twice a day, downloads
 /// Schedulai.zip, checks it against Schedulai.zip.sha256, and swaps the app in
 /// /Applications through a small script that waits for this process to quit,
