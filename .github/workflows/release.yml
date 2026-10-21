@@ -1,0 +1,39 @@
+# A tag v1.2.3 builds Schedulai.app (stamped 1.2.3) and publishes it as a
+# GitHub release: Schedulai.zip and its Schedulai.zip.sha256, the two assets
+# the app's updater downloads.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          swift --version
+
+      - name: Build
+        run: VERSION="${GITHUB_REF_NAME#v}" scripts/build-app.sh build
+
+      - name: Package
+        working-directory: build
+        run: |
+          /usr/bin/ditto -c -k --keepParent Schedulai.app Schedulai.zip
+          shasum -a 256 Schedulai.zip > Schedulai.zip.sha256
+          cat Schedulai.zip.sha256
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" build/Schedulai.zip build/Schedulai.zip.sha256 \
+            --title "Schedulai ${GITHUB_REF_NAME#v}" --generate-notes
