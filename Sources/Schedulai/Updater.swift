@@ -28,7 +28,7 @@ final class Updater {
     static var appBundle: Bundle {
         var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
         guard proc_pidpath(getpid(), &buffer, UInt32(buffer.count)) > 0 else { return .main }
-        let executable = URL(filePath: String(cString: buffer)).resolvingSymlinksInPath()
+        let executable = URL(filePath: String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)).resolvingSymlinksInPath()
         let contents = executable.deletingLastPathComponent().deletingLastPathComponent()
         return Bundle(url: contents.deletingLastPathComponent()) ?? .main
     }
@@ -38,6 +38,7 @@ final class Updater {
     }
 
     func start() {
+        guard JobStore.demoRoot == nil else { return }
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(20))
             while let self {

@@ -2,6 +2,8 @@
 
 A macOS app that runs your Claude Code prompts on a schedule.
 
+![Schedulai: the jobs, a report rendered from Markdown, the prompt editor](docs/demo.gif)
+
 Each job is a Markdown file — a prompt plus a few lines saying when to run it and which tools
 it may use. Schedulai hands it to `claude -p` through launchd, keeps every report, and shows
 the state of each job in the Dock, the menu bar and its window. It also ships a Claude Code
@@ -68,6 +70,12 @@ From source (Xcode 26):
 ```bash
 scripts/install.sh   # build, copy to /Applications, open
 ```
+
+## The animation above
+
+It shows sample jobs, never your own: `SCHEDULAI_DEMO=<dir>` makes the app read its jobs from
+`<dir>` and leave launchd alone, and `SCHEDULAI_TOUR=1` makes it walk through them on its own
+while its window is captured frame by frame (`screencapture -l <window>`).
 
 ## Release
 

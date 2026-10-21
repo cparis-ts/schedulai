@@ -52,12 +52,14 @@ struct ContentView: View {
             }
         }
         .toolbar(removing: .title)
-        .tint(.brand)
         // Every string is looked up at render time: a new language redraws them all.
         .id(language.resolved)
         .onAppear {
             if selection == nil { selection = store.jobs.first?.id }
             store.openWindow = { openWindow(id: "main") }
+            if ProcessInfo.processInfo.environment["SCHEDULAI_TOUR"] != nil {
+                Task { await tour() }
+            }
         }
         .onChange(of: store.requestedJob) { _, id in
             if let id {
@@ -87,6 +89,31 @@ struct ContentView: View {
         } message: {
             Text(store.errorMessage ?? "")
         }
+    }
+}
+
+extension ContentView {
+    /// `SCHEDULAI_TOUR=1`: walks through the jobs on its own, for recording
+    /// the README's animation. Writes "tour-start" and "tour-done" to stderr.
+    @MainActor
+    func tour() async {
+        try? await Task.sleep(for: .seconds(1))
+        NSApp.windows.first { $0.canBecomeMain }?.setFrame(NSRect(x: 80, y: 80, width: 1240, height: 780), display: true)
+        let ids = store.jobs.map(\.id)
+        func show(_ id: String, prompt: Bool = false, for seconds: Double) async {
+            selection = id
+            if prompt { store.requestedPromptTab = true }
+            try? await Task.sleep(for: .seconds(seconds))
+        }
+        guard ids.count >= 4 else { return }
+        FileHandle.standardError.write(Data("tour-start\n".utf8))
+        await show(ids[2], for: 3.5)            // Morning PR digest: its report
+        await show(ids[2], prompt: true, for: 3) // …and its prompt
+        await show(ids[0], for: 3)              // Dependency audit: a failed run
+        await show(ids[1], for: 2.5)            // Inbox triage: running
+        await show(ids[3], for: 2.5)            // Release notes: paused
+        await show(ids[2], for: 2)
+        FileHandle.standardError.write(Data("tour-done\n".utf8))
     }
 }
 
@@ -306,6 +333,7 @@ private struct JobDetail: View {
             } else {
                 Button(tr("Run now"), systemImage: "play.fill") { store.runNow(job) }
                     .buttonStyle(.glassProminent)
+                    .tint(.brand)
             }
             Button(tr("Open folder"), systemImage: "folder") { NSWorkspace.shared.open(job.dir) }
                 .buttonStyle(.glass)
@@ -317,6 +345,7 @@ private struct JobDetail: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
+            .tint(.brand)
         }
         .controlSize(.large)
     }
@@ -437,6 +466,7 @@ private struct JobDetail: View {
                 Button(tr("Save")) { save() }
                     .keyboardShortcut("s", modifiers: .command)
                     .buttonStyle(.glassProminent)
+                    .tint(.brand)
                     .disabled(!isDirty)
             }
             .padding([.horizontal, .bottom], 14)
@@ -570,13 +600,13 @@ private struct NewJobSheet: View {
                 Button(tr("Create"), action: create)
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.glassProminent)
+                    .tint(.brand)
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             .controlSize(.large)
         }
         .padding(22)
         .frame(width: 420)
-        .tint(.brand)
     }
 
     private func create() {

@@ -45,9 +45,14 @@ final class JobStore {
         return .sparkle
     }
 
-    let root = URL.homeDirectory.appending(path: ".claude/scheduled")
+    /// `SCHEDULAI_DEMO=<dir>`: jobs read from <dir>, LaunchAgents kept in
+    /// <dir>/.agents and launchctl never called — the README's screenshots
+    /// come from such a copy, so they show sample jobs and touch nothing real.
+    static let demoRoot = ProcessInfo.processInfo.environment["SCHEDULAI_DEMO"].map { URL(filePath: $0) }
+
+    let root = demoRoot ?? URL.homeDirectory.appending(path: ".claude/scheduled")
     var runner: URL { root.appending(path: ".bin/run-job.sh") }
-    private let agentsDir = URL.homeDirectory.appending(path: "Library/LaunchAgents")
+    private let agentsDir = demoRoot?.appending(path: ".agents") ?? URL.homeDirectory.appending(path: "Library/LaunchAgents")
     private let domain = "gui/\(getuid())"
     private let fm = FileManager.default
 
@@ -329,6 +334,7 @@ final class JobStore {
 
     @discardableResult
     private func launchctl(_ args: String...) -> (Int32, String) {
+        if Self.demoRoot != nil { return (0, "") }
         let process = Process()
         process.executableURL = URL(filePath: "/bin/launchctl")
         process.arguments = args
@@ -365,7 +371,7 @@ final class JobStore {
     /// the `schedulai` command (a link to this binary). Only from the app
     /// itself: a `schedulai` run has no bundle resources to copy.
     private func installRunner() {
-        guard !Self.headless,
+        guard !Self.headless, Self.demoRoot == nil,
               let bundledRunner = Bundle.main.url(forResource: "run-job", withExtension: "sh") else { return }
         let skill = URL.homeDirectory.appending(path: ".claude/skills/schedulai/SKILL.md")
         let command = URL.homeDirectory.appending(path: ".local/bin/schedulai")
