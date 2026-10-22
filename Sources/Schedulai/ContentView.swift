@@ -61,6 +61,9 @@ struct ContentView: View {
                 Task { await tour() }
             }
         }
+        .onChange(of: store.jobs.map(\.id)) { _, ids in
+            if let current = selection, !ids.contains(current) { selection = ids.first }
+        }
         .onChange(of: store.requestedJob) { _, id in
             if let id {
                 selection = id
@@ -129,6 +132,20 @@ private struct Sidebar: View {
                 JobRow(job: job)
                     .tag(job.id)
             }
+        }
+        .contextMenu(forSelectionType: Job.ID.self) { ids in
+            if let job = store.jobs.first(where: { ids.contains($0.id) }) {
+                Button(tr("Run now"), systemImage: "play") { store.runNow(job) }
+                Button(job.enabled ? tr("Pause") : tr("Activate"), systemImage: job.enabled ? "pause" : "checkmark") {
+                    store.setEnabled(job, !job.enabled)
+                }
+                Button(tr("Open folder"), systemImage: "folder") { NSWorkspace.shared.open(job.dir) }
+                Divider()
+                Button(tr("Delete…"), systemImage: "trash", role: .destructive) { store.askToDelete(job) }
+            }
+        }
+        .onDeleteCommand {
+            if let job = store.jobs.first(where: { $0.id == selection }) { store.askToDelete(job) }
         }
         .safeAreaInset(edge: .top) {
             if store.installedAgents.isEmpty {
@@ -383,6 +400,10 @@ private struct JobDetail: View {
             }
             Button(tr("Open folder"), systemImage: "folder") { NSWorkspace.shared.open(job.dir) }
                 .buttonStyle(.glass)
+            Button(tr("Delete…"), systemImage: "trash", role: .destructive) { store.askToDelete(job) }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.glass)
+                .help(tr("Delete this cron (its folder goes to the Trash)"))
             Spacer()
             Picker(tr("View"), selection: $tab) {
                 Label(tr("Report"), systemImage: "doc.richtext").tag(Tab.log)

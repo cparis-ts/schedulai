@@ -235,6 +235,37 @@ final class JobStore {
         reload()
     }
 
+    /// Asks first, then deletes; the window, the menu bar and the Dock all come here.
+    @discardableResult
+    func askToDelete(_ job: Job) -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = tr("Delete \u{201C}%@\u{201D}?", job.name)
+        alert.informativeText = tr("Its schedule is removed and its folder — prompt and reports — goes to the Trash.")
+        alert.addButton(withTitle: tr("Move to Trash")).hasDestructiveAction = true
+        alert.addButton(withTitle: tr("Cancel"))
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return false }
+        return delete(job)
+    }
+
+    /// Unschedules the job, stops a run in progress, and moves its folder to
+    /// the Trash, where it can still be put back.
+    @discardableResult
+    func delete(_ job: Job) -> Bool {
+        if job.runningPID != nil { stop(job) }
+        launchctl("bootout", "\(domain)/\(job.label)")
+        try? fm.removeItem(at: plistURL(id: job.id))
+        defer { reload() }
+        do {
+            try fm.trashItem(at: job.dir, resultingItemURL: nil)
+            return true
+        } catch {
+            errorMessage = tr("Could not delete the cron: %@", error.localizedDescription)
+            return false
+        }
+    }
+
     func runNow(_ job: Job) {
         if job.enabled {
             launchctl("kickstart", "\(domain)/\(job.label)")

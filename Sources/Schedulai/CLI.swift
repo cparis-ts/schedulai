@@ -12,6 +12,7 @@ enum CLI {
       check <id>        validate a job's prompt.md; exit 1 when something is wrong
       enable <id>       validate, then schedule it (writes its LaunchAgent)
       disable <id>      unschedule it
+      delete <id>       unschedule it and move its folder to the Trash
       run <id>          run it now in the foreground; prints its log, exits with its code
       dir               print the jobs directory
       version           print the installed version
@@ -68,6 +69,14 @@ enum CLI {
             guard let job = find(args[1], in: store) else { return 1 }
             store.setEnabled(job, false)
             print("disabled: \(job.id)")
+            return 0
+        case ("delete", 2):
+            guard let job = find(args[1], in: store) else { return 1 }
+            guard store.delete(job) else {
+                printError(store.errorMessage ?? "not deleted")
+                return 1
+            }
+            print("deleted: \(job.id) (folder moved to the Trash)")
             return 0
         case ("run", 2):
             guard let job = find(args[1], in: store) else { return 1 }

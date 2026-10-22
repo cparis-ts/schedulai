@@ -51,6 +51,16 @@ enum L10n {
     }
 
     static let french: [String: String] = [
+        // Delete
+        "Delete \u{201C}%@\u{201D}?": "Supprimer « %@ » ?",
+        "Its schedule is removed and its folder — prompt and reports — goes to the Trash.":
+            "Sa planification est retirée et son dossier — prompt et comptes rendus — part à la Corbeille.",
+        "Move to Trash": "Mettre à la Corbeille",
+        "Could not delete the cron: %@": "Impossible de supprimer le cron : %@",
+        "Delete…": "Supprimer…",
+        "Delete this cron (its folder goes to the Trash)": "Supprimer ce cron (son dossier part à la Corbeille)",
+        "Pause": "Mettre en pause",
+        "Activate": "Activer",
         // Agents
         "No tool: text answer only": "Aucun outil : réponse texte seulement",
         "Sandbox %@ + network": "Bac à sable %@ + réseau",

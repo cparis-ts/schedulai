@@ -49,7 +49,8 @@ posts a notification.
 ## The app
 
 - **Window** — every job with its state, next run, success rate and last runs; the report
-  rendered from Markdown (or raw); the prompt editable in place, name and description included.
+  rendered from Markdown (or raw); the prompt editable in place, name and description included;
+  right-click a job (or press Delete) to run, pause or delete it — its folder goes to the Trash.
 - **Menu bar** — a clock with a sparkle (a dot when a run failed); its menu lists the jobs,
   runs or pauses them, and holds *Open at login*, *Language* and *Check for Updates…*.
 - **Dock** — a badge counts the failed jobs; right-click for the same job menu.
@@ -66,7 +67,7 @@ tools it used, test-runs it and switches it on. It drives the `schedulai` comman
 through the app's own code:
 
 ```
-schedulai list | check <id> | run <id> | enable <id> | disable <id> | dir | version
+schedulai list | check <id> | run <id> | enable <id> | disable <id> | delete <id> | dir | version
 ```
 
 ## Install

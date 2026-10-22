@@ -144,4 +144,4 @@ state and lets them pause it.
 `schedulai list`, edit its `prompt.md`, `schedulai check <id>`, then
 `schedulai enable <id>` again so a new `schedule:` reaches launchd (the app
 also picks it up within seconds while it is open). Pause with `disable`; delete
-by `disable` then removing the folder — after asking.
+with `schedulai delete <id>` (unschedules it, folder to the Trash) — after asking.

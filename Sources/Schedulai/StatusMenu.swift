@@ -124,6 +124,8 @@ enum JobMenu {
         let toggle = ClosureMenuItem(tr("Active")) { store.setEnabled(job, !job.enabled) }
         toggle.state = job.enabled ? .on : .off
         submenu.addItem(toggle)
+        submenu.addItem(.separator())
+        submenu.addItem(ClosureMenuItem(tr("Delete…")) { store.askToDelete(job) })
         item.submenu = submenu
         return item
     }
