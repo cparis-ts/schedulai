@@ -51,6 +51,21 @@ enum L10n {
     }
 
     static let french: [String: String] = [
+        // Agents
+        "No tool: text answer only": "Aucun outil : réponse texte seulement",
+        "Sandbox %@ + network": "Bac à sable %@ + réseau",
+        "Sandbox %@": "Bac à sable %@",
+        "Approval %@": "Approbation %@",
+        "Approval %@ · %@": "Approbation %@ · %@",
+        "Unknown agent \"%@\": write claude, codex or gemini.": "Agent inconnu « %@ » : écris claude, codex ou gemini.",
+        "sandbox: \"%@\" is not one of %@.": "sandbox : « %@ » ne fait pas partie de %@.",
+        "network: write true or false.": "network : écris true ou false.",
+        "approval: \"%@\" is not one of %@.": "approval : « %@ » ne fait pas partie de %@.",
+        "%@ is not installed": "%@ n'est pas installé",
+        "Runs will fail until it is. Click for how to install it.": "Les passages échoueront tant qu'il ne l'est pas. Clique pour savoir comment l'installer.",
+        "No AI agent found": "Aucun agent IA trouvé",
+        "SchedulAI runs your prompts with Claude Code, Codex or Gemini CLI. Install one of them, then sign in once in a terminal.":
+            "SchedulAI lance tes prompts avec Claude Code, Codex ou Gemini CLI. Installe l'un d'eux, puis connecte-toi une fois dans un terminal.",
         // Schedule
         "No `schedule:` line in the frontmatter.": "Pas de ligne `schedule:` dans le frontmatter.",
         "\"%@\": write e.g. `every 30m` or `every 2h`.": "« %@ » : écris par exemple `every 30m` ou `every 2h`.",
@@ -92,8 +107,8 @@ enum L10n {
         "Could not write the LaunchAgent: %@": "Impossible d'écrire le LaunchAgent : %@",
         "Could not install run-job.sh: %@": "Impossible d'installer run-job.sh : %@",
         "What this cron does, in one sentence.": "Ce que fait ce cron, en une phrase.",
-        "Describe here what Claude should do, then end with a short report.":
-            "Décris ici ce que Claude doit faire, puis termine par un court compte rendu en français.",
+        "Describe here what the agent should do, then end with a short report.":
+            "Décris ici ce que l'agent doit faire, puis termine par un court compte rendu en français.",
         // Menus
         "Crons": "Crons",
         "No crons yet": "Aucun cron pour l'instant",
@@ -102,8 +117,8 @@ enum L10n {
         "Open at login": "Ouvrir au démarrage du Mac",
         "Approve in Settings › Login Items": "À autoriser dans Réglages › Ouverture",
         "New cron…": "Nouveau cron…",
-        "Open Schedulai…": "Ouvrir Schedulai…",
-        "Quit Schedulai": "Quitter Schedulai",
+        "Open SchedulAI…": "Ouvrir SchedulAI…",
+        "Quit SchedulAI": "Quitter SchedulAI",
         "Invalid schedule: %@": "Planification invalide : %@",
         "Next run: %@": "Prochain passage : %@",
         "Stop": "Arrêter",
@@ -157,16 +172,16 @@ enum L10n {
         "Updates only apply to the copy in /Applications.": "Seule la copie de /Applications se met à jour.",
         "Checking for updates…": "Recherche de mises à jour…",
         "Version %@ · up to date": "Version %@ · à jour",
-        "Schedulai %@ is the latest version.": "Schedulai %@ est la dernière version.",
+        "SchedulAI %@ is the latest version.": "SchedulAI %@ est la dernière version.",
         "Version %@ waits for the running cron": "La version %@ attend la fin du cron en cours",
-        "Installing Schedulai %@…": "Installation de Schedulai %@…",
+        "Installing SchedulAI %@…": "Installation de SchedulAI %@…",
         "Version %@ · update check failed": "Version %@ · vérification impossible",
         "Could not update: %@": "Mise à jour impossible : %@",
         "no release found on github.com/%@": "aucune release sur github.com/%@",
         "release %@ has no Schedulai.zip": "la release %@ n'a pas de Schedulai.zip",
         "the download does not match its checksum": "le téléchargement ne correspond pas à son empreinte",
         "the archive holds no Schedulai.app": "l'archive ne contient pas Schedulai.app",
-        "Schedulai %@ is installed.": "Schedulai %@ est installé.",
+        "SchedulAI %@ is installed.": "SchedulAI %@ est installé.",
         "Cancel": "Annuler",
         "Create": "Créer",
     ]

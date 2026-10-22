@@ -200,6 +200,10 @@ struct Job: Identifiable {
     var schedule: Schedule?
     var scheduleError: String?
     var workdir: String
+    var agent: Agent
+    var agentError: String?
+    /// The whole frontmatter: each agent reads its own permission keys.
+    var meta: [String: String]
     var allowedTools: String
     var model: String?
     var prompt: String
@@ -231,5 +235,89 @@ struct Job: Identifiable {
         case .failed: return tr("Failed (%@) %@", "\(status.exitCode ?? -1)", when)
         case .never: return tr("Interrupted %@", when)
         }
+    }
+}
+
+/// The command-line agent a job runs on (`agent:` in the frontmatter, Claude
+/// Code when absent). run-job.sh holds the command line of each; this type
+/// holds what the app checks and shows.
+enum Agent: String, CaseIterable {
+    case claude, codex, gemini
+
+    var displayName: String {
+        switch self {
+        case .claude: return "Claude Code"
+        case .codex: return "Codex"
+        case .gemini: return "Gemini CLI"
+        }
+    }
+
+    var installURL: URL {
+        switch self {
+        case .claude: return URL(string: "https://docs.anthropic.com/en/docs/claude-code/setup")!
+        case .codex: return URL(string: "https://github.com/openai/codex")!
+        case .gemini: return URL(string: "https://github.com/google-gemini/gemini-cli")!
+        }
+    }
+
+    static let codexSandboxes = ["read-only", "workspace-write", "danger-full-access"]
+    static let geminiApprovals = ["default", "auto_edit", "yolo"]
+
+    /// The frontmatter keys only this agent reads.
+    var ownKeys: [String] {
+        switch self {
+        case .claude: return ["allowedTools"]
+        case .codex: return ["sandbox", "network"]
+        case .gemini: return ["allowedTools", "approval"]
+        }
+    }
+
+    /// What the job may do, in one line, as the runner will apply it.
+    func permissions(_ meta: [String: String]) -> String {
+        switch self {
+        case .claude:
+            let tools = meta["allowedTools"] ?? ""
+            return tools.isEmpty ? tr("No tool: text answer only") : tools
+        case .codex:
+            let sandbox = meta["sandbox"].flatMap { $0.isEmpty ? nil : $0 } ?? "read-only"
+            return meta["network"] == "true" ? tr("Sandbox %@ + network", sandbox) : tr("Sandbox %@", sandbox)
+        case .gemini:
+            let approval = meta["approval"].flatMap { $0.isEmpty ? nil : $0 } ?? "default"
+            let tools = meta["allowedTools"] ?? ""
+            return tools.isEmpty ? tr("Approval %@", approval) : tr("Approval %@ · %@", approval, tools)
+        }
+    }
+
+    /// The frontmatter's agent; `error` says what is wrong when it names none we know.
+    static func parse(_ meta: [String: String]) -> (agent: Agent, error: String?) {
+        let text = (meta["agent"] ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+        if text.isEmpty { return (.claude, nil) }
+        guard let agent = Agent(rawValue: text) else {
+            return (.claude, tr("Unknown agent \"%@\": write claude, codex or gemini.", text))
+        }
+        return (agent, nil)
+    }
+
+    /// Values the runner would refuse or misread; empty when the job can run as written.
+    func problems(_ meta: [String: String]) -> [String] {
+        var problems: [String] = []
+        if self == .codex {
+            if let sandbox = meta["sandbox"], !sandbox.isEmpty, !Self.codexSandboxes.contains(sandbox) {
+                problems.append(tr("sandbox: \"%@\" is not one of %@.", sandbox, Self.codexSandboxes.joined(separator: ", ")))
+            }
+            if let network = meta["network"], !network.isEmpty, network != "true", network != "false" {
+                problems.append(tr("network: write true or false."))
+            }
+        }
+        if self == .gemini, let approval = meta["approval"], !approval.isEmpty, !Self.geminiApprovals.contains(approval) {
+            problems.append(tr("approval: \"%@\" is not one of %@.", approval, Self.geminiApprovals.joined(separator: ", ")))
+        }
+        return problems
+    }
+
+    /// Keys written for another agent, which this one ignores.
+    func ignoredKeys(_ meta: [String: String]) -> [String] {
+        let others = Set(Agent.allCases.filter { $0 != self }.flatMap(\.ownKeys)).subtracting(ownKeys)
+        return others.filter { !(meta[$0] ?? "").isEmpty }.sorted()
     }
 }

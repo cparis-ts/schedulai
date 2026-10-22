@@ -21,7 +21,7 @@ struct SchedulaiApp: App {
     @State private var store = JobStore.shared
 
     var body: some Scene {
-        WindowGroup("Schedulai", id: "main") {
+        WindowGroup("SchedulAI", id: "main") {
             ContentView(store: store)
                 .frame(minWidth: 820, minHeight: 480)
         }

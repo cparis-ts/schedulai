@@ -13,7 +13,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.store = store
         super.init()
         statusItem.autosaveName = "Schedulai"
-        statusItem.button?.setAccessibilityLabel("Schedulai")
+        statusItem.button?.setAccessibilityLabel("SchedulAI")
         let menu = NSMenu()
         menu.delegate = self
         statusItem.menu = menu
@@ -91,8 +91,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem(tr("New cron…"), key: "n") { [weak self] in self?.store.showMainWindow(newJob: true) })
-        menu.addItem(ClosureMenuItem(tr("Open Schedulai…"), key: "o") { [weak self] in self?.store.showMainWindow() })
-        menu.addItem(ClosureMenuItem(tr("Quit Schedulai"), key: "q") { NSApp.terminate(nil) })
+        menu.addItem(ClosureMenuItem(tr("Open SchedulAI…"), key: "o") { [weak self] in self?.store.showMainWindow() })
+        menu.addItem(ClosureMenuItem(tr("Quit SchedulAI"), key: "q") { NSApp.terminate(nil) })
     }
 }
 

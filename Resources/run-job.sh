@@ -1,14 +1,29 @@
 #!/bin/zsh
-# Runs one Schedulai job: `claude -p` on <job dir>/prompt.md.
+# Runs one Schedulai job: <job dir>/prompt.md given to its agent's headless
+# mode (`agent:` claude, codex or gemini; claude when absent).
 # Called by the job's LaunchAgent, or by the app's "Lancer maintenant".
 # The app copies this file to ~/.claude/scheduled/.bin/run-job.sh at launch.
 #
 # Writes <job dir>/logs/<stamp>.log (the 30 latest are kept), <job dir>/status.json
 # (read by the app), <job dir>/history.jsonl (one line per run) and <job dir>/.running (the runner's pid, while it runs).
+#
+# `run-job.sh --which claude codex …` prints each command's path as a run would
+# find it (an empty path: not found); the app reads it to show what is installed.
 set -u
+# launchd starts us with a bare PATH: add the usual install places, then the
+# PATH a fresh login shell sets up (Homebrew, npm… from ~/.zprofile), from a
+# clean environment so the app and launchd resolve the same commands.
+login_path="$(/usr/bin/env -i HOME="$HOME" USER="${USER:-}" /bin/zsh -lc 'print -r -- $PATH' 2>/dev/null < /dev/null)"
+export PATH="$HOME/.local/bin:$HOME/.claude/local:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin${login_path:+:$login_path}"
+
+if [[ ${1:-} == --which ]]; then
+  shift
+  for cmd in "$@"; do printf '%s\t%s\n' "$cmd" "$(whence -p "$cmd")"; done
+  exit 0
+fi
+
 JOB_DIR="${1:?usage: run-job.sh <job dir>}"
 PROMPT_FILE="$JOB_DIR/prompt.md"
-export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
 # One frontmatter value (`key: value` between the two leading `---` lines).
 meta() {
@@ -42,6 +57,7 @@ trap 'rm -f "$LOCK"' EXIT
 
 NAME="$(meta name)"; NAME="${NAME:-${JOB_DIR:t}}"
 WORKDIR="$(meta workdir)"; WORKDIR="${WORKDIR/#\~/$HOME}"; WORKDIR="${WORKDIR:-$HOME}"
+AGENT="$(meta agent)"; AGENT="${${AGENT:-claude}:l}"
 TOOLS="$(meta allowedTools)"
 MODEL="$(meta model)"
 LOG="$JOB_DIR/logs/$(date +%Y-%m-%d_%H%M%S).log"
@@ -53,11 +69,55 @@ write_status() {
 }
 write_status null null
 
-args=(-p "$(body)")
-[[ -n $TOOLS ]] && args+=(--allowedTools "$TOOLS")
-[[ -n $MODEL ]] && args+=(--model "$MODEL")
-{ cd "$WORKDIR" && claude "${args[@]}" } > "$LOG" 2>&1 < /dev/null
-rc=$?
+# The agent's headless command line. The log is the agent's final answer,
+# whichever agent ran: that is what the app shows and the notification quotes.
+PROMPT="$(body)"
+REPORT=""
+case $AGENT in
+  claude)
+    cmd=(claude -p "$PROMPT")
+    [[ -n $TOOLS ]] && cmd+=(--allowedTools "$TOOLS")
+    [[ -n $MODEL ]] && cmd+=(--model "$MODEL")
+    ;;
+  codex)
+    # Permissions are a sandbox, not a tool list: read-only unless the job
+    # says otherwise. `network: true` opens the network to workspace-write.
+    SANDBOX="$(meta sandbox)"
+    REPORT="$LOG.answer"
+    cmd=(codex exec --skip-git-repo-check -s "${SANDBOX:-read-only}" -o "$REPORT")
+    [[ $(meta network) == true ]] && cmd+=(-c sandbox_workspace_write.network_access=true)
+    [[ -n $MODEL ]] && cmd+=(-m "$MODEL")
+    cmd+=("$PROMPT")
+    ;;
+  gemini)
+    # Headless, a call needing approval is refused: `approval: default` lets
+    # only `allowedTools` through. --allowed-tools is deprecated upstream in
+    # favour of policy files, and still honoured.
+    APPROVAL="$(meta approval)"
+    cmd=(gemini -p "$PROMPT" --approval-mode "${APPROVAL:-default}")
+    [[ -n $TOOLS ]] && cmd+=(--allowed-tools "$TOOLS")
+    [[ -n $MODEL ]] && cmd+=(-m "$MODEL")
+    ;;
+  *)
+    cmd=()
+    ;;
+esac
+
+if (( ${#cmd} == 0 )); then
+  print -r -- "SchedulAI: unknown agent \"$AGENT\" in prompt.md — write claude, codex or gemini." > "$LOG"
+  rc=2
+elif ! whence -p "${cmd[1]}" > /dev/null; then
+  print -r -- "SchedulAI: \`${cmd[1]}\` is not installed. Install it, or set another \`agent:\` in prompt.md." > "$LOG"
+  rc=127
+else
+  { cd "$WORKDIR" && "${cmd[@]}" } > "$LOG" 2>&1 < /dev/null
+  rc=$?
+  # Codex prints its whole session; its last message is the report. The
+  # session stays the log when there is no answer (a failed run).
+  if [[ -n $REPORT ]]; then
+    if [[ -s $REPORT ]]; then mv -f "$REPORT" "$LOG"; else rm -f "$REPORT"; fi
+  fi
+fi
 write_status "\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"" $rc
 # One line per run, the 50 latest kept: the app's run history.
 cat "$JOB_DIR/status.json" >> "$JOB_DIR/history.jsonl"

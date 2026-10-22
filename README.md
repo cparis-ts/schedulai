@@ -1,14 +1,14 @@
-# Schedulai
+# SchedulAI
 
-A macOS app that runs your Claude Code prompts on a schedule.
+A macOS app that runs your AI prompts on a schedule — with Claude Code, Codex or Gemini CLI.
 
-![Schedulai: the jobs, a report rendered from Markdown, the prompt editor](docs/demo.gif)
+![SchedulAI: the jobs, a report rendered from Markdown, the prompt editor](docs/demo.gif)
 
 Each job is a Markdown file — a prompt plus a few lines saying when to run it and which tools
-it may use. Schedulai hands it to `claude -p` through launchd, keeps every report, and shows
-the state of each job in the Dock, the menu bar and its window. It also ships a Claude Code
-skill, so you can ask a session to build the job for you: *"every Monday at 9, list my PRs
-still waiting on a review"*.
+it may use. SchedulAI hands it to the agent's headless mode (`claude -p`, `codex exec`,
+`gemini -p`) through launchd, keeps every report, and shows the state of each job in the Dock,
+the menu bar and its window. It also ships a skill for all three agents, so you can ask a
+session to build the job for you: *"every Monday at 9, list my PRs still waiting on a review"*.
 
 Built with SwiftUI and AppKit for macOS 26 (Liquid Glass): a Swift package,
 `scripts/build-app.sh`, an ad-hoc-signed bundle.
@@ -23,15 +23,25 @@ name: Morning PR digest
 description: Lists my open PRs waiting on a review
 schedule: weekdays 08:00
 workdir: ~/projects/my-app
+agent: claude            # optional: claude (default), codex or gemini
 allowedTools: "Bash(gh pr list:*),Bash(gh pr view:*)"
-model: sonnet            # optional
+model: sonnet            # optional, passed as is to the agent
 ---
-The prompt given to `claude -p`. End it with the report you want to read.
+The prompt. End it with the report you want to read.
 ```
 
 - `schedule`: `08:00`, `daily 08:00`, `weekdays 08:00`, `mon,thu 09:30`, `08:00, 14:00`,
   `every 30m`, `every 2h` (French day names work too).
-- `allowedTools` is the job's whole permission set: nobody is there to approve a prompt.
+- The permission keys are the job's whole permission set: nobody is there to approve a call.
+  Each agent has its own:
+
+  | `agent:` | Permission keys |
+  |---|---|
+  | `claude` | `allowedTools`: `"Bash(gh pr list:*),mcp__github__get_pr"` — exactly these tools |
+  | `codex` | `sandbox`: `read-only` (default), `workspace-write`, `danger-full-access`; `network: true` to let commands reach the network |
+  | `gemini` | `approval`: `default` (only `allowedTools` pass), `auto_edit`, `yolo`; `allowedTools`: `"run_shell_command(gh pr list)"` |
+
+  `schedulai check <id>` flags a key the job's agent ignores, and an agent that is not installed.
 
 Each run writes `logs/<stamp>.log` (the report), `status.json`, a line of `history.jsonl`, and
 posts a notification.
@@ -47,9 +57,10 @@ posts a notification.
 - **Updates** — the app checks this repository's latest release after launch and twice a
   day, verifies the download against its SHA-256 and installs it, waiting for any running job.
 
-## From Claude Code
+## From your agent
 
-The `schedulai` skill (installed by the app into `~/.claude/skills/`) turns a description into
+The `schedulai` skill — installed by the app into `~/.claude/skills/`, and into
+`~/.codex/skills/` and `~/.gemini/skills/` when you use Codex or Gemini CLI — turns a description into
 a job: it does the task once in the session, writes a self-contained prompt with exactly the
 tools it used, test-runs it and switches it on. It drives the `schedulai` command, which goes
 through the app's own code:
@@ -60,8 +71,19 @@ schedulai list | check <id> | run <id> | enable <id> | disable <id> | dir | vers
 
 ## Install
 
+Requirements: macOS 26, Apple Silicon, and at least one of
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup),
+[Codex](https://github.com/openai/codex) or [Gemini CLI](https://github.com/google-gemini/gemini-cli),
+signed in once from a terminal. Without one, the app says so and every run fails with that reason.
+
 From a release: download `Schedulai.zip` from
-[Releases](https://github.com/cparis-ts/schedulai/releases), unzip into `/Applications`, open.
+[Releases](https://github.com/cparis-ts/schedulai/releases), unzip into `/Applications`, then
+— the app is not notarized yet — clear the quarantine once and open it:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Schedulai.app && open /Applications/Schedulai.app
+```
+
 The app installs the skill, the `schedulai` command (`~/.local/bin`) and the job runner itself.
 
 From source (Xcode 26):

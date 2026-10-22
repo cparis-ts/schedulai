@@ -81,7 +81,7 @@ struct ContentView: View {
                 }
             }
         }
-        .alert("Schedulai", isPresented: Binding(
+        .alert("SchedulAI", isPresented: Binding(
             get: { store.errorMessage != nil },
             set: { if !$0 { store.errorMessage = nil } }
         )) {
@@ -130,13 +130,19 @@ private struct Sidebar: View {
                     .tag(job.id)
             }
         }
+        .safeAreaInset(edge: .top) {
+            if store.installedAgents.isEmpty {
+                NoAgentBanner()
+                    .padding(10)
+            }
+        }
         .safeAreaInset(edge: .bottom) {
             HStack(spacing: 10) {
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
                     .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Schedulai \(Updater.shared.currentVersion)").font(.headline)
+                    Text("SchedulAI \(Updater.shared.currentVersion)").font(.headline)
                     Text(store.summary + " · " + store.headerCaption)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -148,6 +154,31 @@ private struct Sidebar: View {
             .glassEffect(.regular, in: .rect(cornerRadius: 16))
             .padding(10)
         }
+    }
+}
+
+/// Shown while no agent command is found: every run would fail.
+private struct NoAgentBanner: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(tr("No AI agent found"), systemImage: "exclamationmark.triangle.fill")
+                .font(.headline)
+                .foregroundStyle(.orange)
+            Text(tr("SchedulAI runs your prompts with Claude Code, Codex or Gemini CLI. Install one of them, then sign in once in a terminal."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 6) {
+                ForEach(Agent.allCases, id: \.self) { agent in
+                    Button(agent.displayName) { NSWorkspace.shared.open(agent.installURL) }
+                        .buttonStyle(.glass)
+                        .controlSize(.small)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }
 }
 
@@ -268,6 +299,21 @@ private struct JobDetail: View {
                             Pill(systemImage: "exclamationmark.triangle.fill", text: error, tint: .red)
                         } else if let schedule = job.schedule {
                             Pill(systemImage: "calendar", text: schedule.summary, tint: .brand)
+                        }
+                        if let agentError = job.agentError {
+                            Pill(systemImage: "exclamationmark.triangle.fill", text: agentError, tint: .red)
+                        } else if !store.isInstalled(job.agent) {
+                            Button {
+                                NSWorkspace.shared.open(job.agent.installURL)
+                            } label: {
+                                Pill(systemImage: "exclamationmark.triangle.fill",
+                                     text: tr("%@ is not installed", job.agent.displayName), tint: .red)
+                            }
+                            .buttonStyle(.plain)
+                            .help(tr("Runs will fail until it is. Click for how to install it."))
+                        } else {
+                            Pill(systemImage: "sparkles", text: job.agent.displayName)
+                                .help(job.agent.permissions(job.meta))
                         }
                         Pill(systemImage: "folder", text: job.workdir)
                         if let model = job.model {
@@ -488,6 +534,13 @@ private struct JobDetail: View {
         }
         if prompt.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return (false, tr("The prompt is empty below the frontmatter."))
+        }
+        let agent = Agent.parse(prompt.meta)
+        if let error = agent.error {
+            return (false, error)
+        }
+        if let problem = agent.agent.problems(prompt.meta).first {
+            return (false, problem)
         }
         do {
             let schedule = try Schedule.parse(prompt.meta["schedule"] ?? "")

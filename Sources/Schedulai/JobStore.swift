@@ -17,6 +17,10 @@ final class JobStore {
 
     private(set) var jobs: [Job] = []
     private(set) var loginItemStatus = SMAppService.mainApp.status
+    /// Where each agent's command was found, as run-job.sh resolves it; nil
+    /// until the first lookup, and in demo mode (every agent then counts as
+    /// installed). Refreshed every minute, off the main thread.
+    private(set) var agentPaths: [Agent: String]?
     var errorMessage: String?
     /// Called after every reload: the menu bar icon follows the jobs' state.
     @ObservationIgnored var onReload: (() -> Void)?
@@ -48,7 +52,7 @@ final class JobStore {
     /// `SCHEDULAI_DEMO=<dir>`: jobs read from <dir>, LaunchAgents kept in
     /// <dir>/.agents and launchctl never called — the README's screenshots
     /// come from such a copy, so they show sample jobs and touch nothing real.
-    static let demoRoot = ProcessInfo.processInfo.environment["SCHEDULAI_DEMO"].map { URL(filePath: $0) }
+    nonisolated static let demoRoot = ProcessInfo.processInfo.environment["SCHEDULAI_DEMO"].map { URL(filePath: $0) }
 
     let root = demoRoot ?? URL.homeDirectory.appending(path: ".claude/scheduled")
     var runner: URL { root.appending(path: ".bin/run-job.sh") }
@@ -60,7 +64,18 @@ final class JobStore {
         installRunner()
         migrateLegacyAgents()
         reload()
-        if Self.headless { return }
+        if Self.headless {
+            agentPaths = Self.resolveAgents(runner: runner)
+            return
+        }
+        Task { [weak self] in
+            while let self {
+                let runner = self.runner
+                let paths = await Task.detached { Self.resolveAgents(runner: runner) }.value
+                self.agentPaths = paths
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
         Task { [weak self] in
             while true {
                 try? await Task.sleep(for: .seconds(3))
@@ -140,6 +155,7 @@ final class JobStore {
             .filter { $0.pathExtension == "log" }
             .sorted { modificationDate($0) > modificationDate($1) }
 
+        let agent = Agent.parse(prompt.meta)
         return Job(
             id: id,
             dir: dir,
@@ -149,6 +165,9 @@ final class JobStore {
             schedule: schedule,
             scheduleError: scheduleError,
             workdir: prompt.meta["workdir"] ?? "~",
+            agent: agent.agent,
+            agentError: agent.error,
+            meta: prompt.meta,
             allowedTools: prompt.meta["allowedTools"] ?? "",
             model: prompt.meta["model"],
             prompt: prompt.body.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -158,6 +177,40 @@ final class JobStore {
             history: history.isEmpty ? (status.map { [$0] } ?? []) : Array(history),
             logs: logs
         )
+    }
+
+    /// False only when the lookup ran and found no command for `agent`.
+    func isInstalled(_ agent: Agent) -> Bool {
+        guard Self.demoRoot == nil, let agentPaths else { return true }
+        return agentPaths[agent] != nil
+    }
+
+    /// The agents found, in the order a new job prefers them.
+    var installedAgents: [Agent] { Agent.allCases.filter(isInstalled) }
+
+    /// `run-job.sh --which`: the same PATH the runs get, so "installed" here
+    /// means the scheduled run will find it too.
+    nonisolated static func resolveAgents(runner: URL) -> [Agent: String]? {
+        // A runner from before --which would take it for a job folder.
+        guard demoRoot == nil,
+              let script = try? String(contentsOf: runner, encoding: .utf8), script.contains("--which") else { return nil }
+        let process = Process()
+        let pipe = Pipe()
+        process.executableURL = URL(filePath: "/bin/zsh")
+        process.arguments = [runner.path, "--which"] + Agent.allCases.map(\.rawValue)
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        var paths: [Agent: String] = [:]
+        for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
+            let fields = line.split(separator: "\t", maxSplits: 1).map(String.init)
+            if fields.count == 2, let agent = Agent(rawValue: fields[0]), !fields[1].isEmpty {
+                paths[agent] = fields[1]
+            }
+        }
+        return paths
     }
 
     private func modificationDate(_ url: URL) -> Date {
@@ -231,15 +284,24 @@ final class JobStore {
             errorMessage = tr("A cron \"%@\" already exists.", slug)
             return nil
         }
+        // The first agent installed here; Claude Code when none is (the
+        // job then says so until one is installed).
+        let agent = installedAgents.first ?? .claude
+        let permissions: String
+        switch agent {
+        case .claude: permissions = "allowedTools: \"Bash(gh pr list:*),Bash(gh pr view:*)\""
+        case .codex: permissions = "agent: codex\nsandbox: read-only"
+        case .gemini: permissions = "agent: gemini\nallowedTools: \"run_shell_command(gh pr list),run_shell_command(gh pr view)\""
+        }
         let template = """
         ---
         name: \(name)
         description: \(tr("What this cron does, in one sentence."))
         schedule: weekdays 08:00
         workdir: ~
-        allowedTools: "Bash(gh pr list:*),Bash(gh pr view:*)"
+        \(permissions)
         ---
-        \(tr("Describe here what Claude should do, then end with a short report."))
+        \(tr("Describe here what the agent should do, then end with a short report."))
 
         """
         do {
@@ -380,6 +442,11 @@ final class JobStore {
             try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: runner.path)
             if let bundledSkill = Bundle.main.url(forResource: "SKILL", withExtension: "md") {
                 try replace(skill, with: bundledSkill)
+                // Codex and Gemini CLI read the same SKILL.md format, from
+                // their own folder: installed for each one this Mac uses.
+                for home in [".codex", ".gemini"] where fm.fileExists(atPath: URL.homeDirectory.appending(path: home).path) {
+                    try replace(URL.homeDirectory.appending(path: "\(home)/skills/schedulai/SKILL.md"), with: bundledSkill)
+                }
             }
             if let executable = Bundle.main.executableURL, Bundle.main.bundlePath.hasPrefix("/Applications/") {
                 try fm.createDirectory(at: command.deletingLastPathComponent(), withIntermediateDirectories: true)

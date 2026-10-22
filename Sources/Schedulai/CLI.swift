@@ -22,10 +22,14 @@ enum CLI {
       description: Lists my open PRs waiting on a review   (optional, shown in the app)
       schedule: weekdays 08:00     (08:00 · daily 08:00 · mon,thu 09:30 · 08:00, 14:00 · every 30m · every 2h)
       workdir: ~/projects/my-app
-      allowedTools: "Bash(gh pr list:*),Bash(gh pr view:*)"
+      agent: claude                (optional: claude, codex or gemini; claude when absent)
       model: sonnet                (optional)
+      …the agent's permissions:
+        claude  allowedTools: "Bash(gh pr list:*),Bash(gh pr view:*)"
+        codex   sandbox: read-only | workspace-write | danger-full-access   network: true
+        gemini  allowedTools: "run_shell_command(gh pr list)"   approval: default | auto_edit | yolo
       ---
-      The prompt given to `claude -p`.
+      The prompt, given to the agent's headless mode (claude -p, codex exec, gemini -p).
     """
 
     static func run(_ args: [String]) -> Int32 {
@@ -100,7 +104,20 @@ enum CLI {
         } else {
             problems.append("workdir: \(job.workdir) is not a directory")
         }
-        print("allowedTools: \(job.allowedTools.isEmpty ? "(none: claude can only answer in text)" : job.allowedTools)")
+        if let agentError = job.agentError {
+            problems.append("agent: \(agentError)")
+        } else {
+            let found = JobStore.shared.agentPaths?[job.agent]
+            print("agent:        \(job.agent.rawValue) (\(job.agent.displayName)) — \(found ?? (JobStore.shared.agentPaths == nil ? "not checked" : "command not found"))")
+            if !JobStore.shared.isInstalled(job.agent) {
+                problems.append("agent: `\(job.agent.rawValue)` is not installed (or not on the runner's PATH); see \(job.agent.installURL.absoluteString)")
+            }
+            print("permissions:  \(job.agent.permissions(job.meta))")
+            problems += job.agent.problems(job.meta)
+            for key in job.agent.ignoredKeys(job.meta) {
+                print("note:         `\(key):` is ignored by \(job.agent.displayName)")
+            }
+        }
         print("model:        \(job.model ?? "(default)")")
         print("active:       \(job.enabled ? "yes" : "no")")
         print("last run:     \(job.lastRunText)\(job.logs.first.map { " — \($0.path)" } ?? "")")

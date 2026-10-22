@@ -36,4 +36,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" build/Schedulai.zip build/Schedulai.zip.sha256 \
-            --title "Schedulai ${GITHUB_REF_NAME#v}" --generate-notes
+            --title "SchedulAI ${GITHUB_REF_NAME#v}" --generate-notes

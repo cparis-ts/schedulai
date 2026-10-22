@@ -64,7 +64,7 @@ final class Updater {
             let version = release.tag.hasPrefix("v") ? String(release.tag.dropFirst()) : release.tag
             guard Self.isNewer(version, than: currentVersion) else {
                 statusLine = tr("Version %@ · up to date", currentVersion)
-                if userInitiated { alert(tr("Schedulai %@ is the latest version.", currentVersion)) }
+                if userInitiated { alert(tr("SchedulAI %@ is the latest version.", currentVersion)) }
                 return
             }
             if JobStore.shared.jobs.contains(where: { $0.state == .running }) {
@@ -72,7 +72,7 @@ final class Updater {
                 statusLine = tr("Version %@ waits for the running cron", version)
                 return
             }
-            statusLine = tr("Installing Schedulai %@…", version)
+            statusLine = tr("Installing SchedulAI %@…", version)
             try await install(release, version: version)
         } catch {
             statusLine = tr("Version %@ · update check failed", currentVersion)
@@ -158,7 +158,7 @@ final class Updater {
         /usr/bin/ditto "\(newApp.path)" "\(target)"
         /usr/bin/xattr -dr com.apple.quarantine "\(target)" 2>/dev/null
         open "\(target)"
-        osascript -e 'display notification "\(tr("Schedulai %@ is installed.", version))" with title "Schedulai"'
+        osascript -e 'display notification "\(tr("SchedulAI %@ is installed.", version))" with title "SchedulAI"'
         rm -rf "\(work.path)"
         """.write(to: script, atomically: true, encoding: .utf8)
 
@@ -182,7 +182,7 @@ final class Updater {
 
     private func alert(_ text: String) {
         let alert = NSAlert()
-        alert.messageText = "Schedulai"
+        alert.messageText = "SchedulAI"
         alert.informativeText = text
         NSApp.activate()
         alert.runModal()

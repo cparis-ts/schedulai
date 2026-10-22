@@ -1,14 +1,23 @@
 ---
 name: schedulai
-description: Set up a recurring Claude task (a "cron") in the Schedulai app — from a plain-language description, write the job's prompt.md, its allowed tools and schedule, test-run it, and activate it. Use when the user asks to do something "every morning", "each Monday", "tous les jours à 8h", to "automate", "schedule", "mettre un cron", or to change, test, pause or remove an existing cron.
+description: Set up a recurring AI task (a "cron") in the SchedulAI app, run by Claude Code, Codex or Gemini CLI — from a plain-language description, write the job's prompt.md, its allowed tools and schedule, test-run it, and activate it. Use when the user asks to do something "every morning", "each Monday", "tous les jours à 8h", to "automate", "schedule", "mettre un cron", or to change, test, pause or remove an existing cron.
 ---
 
-# schedulai — turn a described task into a scheduled Claude job
+# schedulai — turn a described task into a scheduled AI job
 
 The user describes a task and when it should happen; you build the job and switch
-it on. The job then runs **headless** (`claude -p`, nobody at the keyboard, no
-memory of this conversation) under launchd, and shows up in the Schedulai app
-(Dock + menu bar).
+it on. The job then runs **headless** (nobody at the keyboard, no memory of this
+conversation) under launchd, and shows up in the SchedulAI app (Dock + menu bar).
+
+This skill is read by Claude Code, Codex and Gemini CLI alike. **Schedule the job
+on the agent you are** — the same one that does step 2 here — unless the user
+asks for another: set `agent:` accordingly (`claude` is the default when absent).
+
+| You are | `agent:` | Headless run | Permission keys |
+|---|---|---|---|
+| Claude Code | `claude` (or omit) | `claude -p` | `allowedTools` |
+| Codex | `codex` | `codex exec` | `sandbox`, `network` |
+| Gemini CLI | `gemini` | `gemini -p` | `allowedTools`, `approval` |
 
 ## The pieces
 
@@ -20,6 +29,7 @@ memory of this conversation) under launchd, and shows up in the Schedulai app
   description: Lists my open PRs waiting on a review
   schedule: weekdays 08:00
   workdir: ~/projects/my-app
+  agent: claude
   allowedTools: "Bash(gh pr list:*),Bash(gh pr view:*)"
   model: sonnet
   ---
@@ -28,12 +38,13 @@ memory of this conversation) under launchd, and shows up in the Schedulai app
 
   `name` and `description` are what the app shows (write the description as one
 sentence the user will recognise in a list). `schedule`: `08:00`, `daily 08:00`, `weekdays 08:00`, `mon,thu 09:30` (French day
-  names work too), `08:00, 14:00`, `every 30m`, `every 2h`. `model` is optional.
+  names work too), `08:00, 14:00`, `every 30m`, `every 2h`. `model` is optional
+  and is passed as is to the agent.
 - The `schedulai` command (in `~/.local/bin`) — always use it rather than writing
   a plist yourself; it runs the app's own code:
   `list` · `check <id>` · `run <id>` (foreground, prints the log, exits with its
   code) · `enable <id>` · `disable <id>` · `dir`.
-- Each run writes `<id>/logs/<stamp>.log` (the final answer of `claude -p`),
+- Each run writes `<id>/logs/<stamp>.log` (the agent's final answer),
   `status.json`, and posts a macOS notification with the end of that answer.
 
 ## Workflow
@@ -43,14 +54,14 @@ sentence the user will recognise in a list). `schedule`: `08:00`, `daily 08:00`,
 You need: **what** to do, **when**, **on what scope** (whose cards, which repos),
 **what it may change** (read-only report vs. moving cards, commenting, opening
 PRs…), and **what the report should say**. Infer what the conversation and the
-user's memory already answer; ask the rest in ONE AskUserQuestion. Writes are
+user's memory already answer; ask the rest in ONE question (AskUserQuestion in Claude Code). Writes are
 the question worth asking: a job that mutates shared state needs an explicit yes.
 
 ### 2. Do it once, here, before writing anything
 
 The best specification is a run that worked. Perform the task (or its read-only
 half) in this session and note **the exact tool names you called**, the IDs,
-URLs and commands that worked, and the traps you hit. A tool that needs
+URLs and commands that worked, and the traps you hit. In Claude Code, a tool that needs
 `ToolSearch` here is still called by its full name headless.
 
 ### 3. Write the prompt for a reader with no context
@@ -68,10 +79,12 @@ The headless run knows nothing of this conversation. The prompt must carry:
 
 Write it in English or French, as the user prefers; keep it under a page.
 
-### 4. Allow exactly the tools of step 2
+### 4. Allow exactly what step 2 needed
 
-`allowedTools` is the job's whole permission set — nothing else is approved, and
-a denied call is skipped, not asked.
+The permission keys are the job's whole permission set — nothing else is
+approved, and a refused call is skipped, not asked. Grant the least that works.
+
+**Claude Code** — `allowedTools`, a comma-separated list:
 
 - MCP tools by full name: `mcp__<server>__<tool>`; plugin servers look like
   `mcp__plugin_<plugin>_<server>__<tool>`.
@@ -81,11 +94,27 @@ a denied call is skipped, not asked.
 - Check the MCP servers it needs are reachable from `workdir`:
   `cd <workdir> && claude mcp list`.
 
+**Codex** — a sandbox, not a tool list:
+
+- `sandbox: read-only` (the default): reads files and runs read-only commands.
+- `sandbox: workspace-write`: may also write inside `workdir`. Add
+  `network: true` only when a command must reach the network (`gh`, `curl`…).
+- `sandbox: danger-full-access`: no sandbox at all. Only with the user's explicit
+  yes, and say so when you switch the job on.
+
+**Gemini CLI** — `approval` plus `allowedTools`:
+
+- `approval: default` (the default): headless, every call needing approval is
+  refused, except the tools in `allowedTools`, e.g.
+  `"run_shell_command(gh pr list),run_shell_command(gh pr view)"`.
+- `auto_edit` also approves file edits; `yolo` approves everything — only with
+  the user's explicit yes.
+
 ### 5. Create, check, test
 
 ```bash
 id=<kebab-case-id>                       # never overwrite an existing job without asking
-mkdir -p "$(schedulai dir)/$id"        # then write prompt.md with the Write tool
+mkdir -p "$(schedulai dir)/$id"        # then write prompt.md
 schedulai check "$id"                  # exit 1 = fix what it prints
 schedulai run "$id"                    # real run: run it in the background, it takes minutes
 ```
@@ -94,8 +123,10 @@ schedulai run "$id"                    # real run: run it in the background, it 
 do and get their go first — or test a copy whose prompt says "report what you
 would do, change nothing", then switch the real one on.
 
-Read the log. A tool missing from `allowedTools` shows up as Claude saying it was
-not allowed or lacked permission: add it, run again. A wrong report means a wrong
+Read the log. A missing permission shows up as the agent saying a call was not
+allowed, was denied or was blocked by the sandbox: widen the permission keys by
+the least that fixes it, run again. `schedulai check` says when the agent's
+command is not installed where the scheduled run looks for it. A wrong report means a wrong
 prompt: fix the prompt, not the log.
 
 ### 6. Switch it on and say so
