@@ -81,3 +81,7 @@ while its window is captured frame by frame (`screencapture -l <window>`).
 Push a tag: `git tag v0.3.0 && git push origin v0.3.0`. The *Release* workflow builds the app
 stamped with that version and publishes `Schedulai.zip` and `Schedulai.zip.sha256`; installed
 copies pick it up on their next check.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Issues and pull requests are welcome.
