@@ -262,11 +262,12 @@ enum Agent: String, CaseIterable {
 
     static let codexSandboxes = ["read-only", "workspace-write", "danger-full-access"]
     static let geminiApprovals = ["default", "auto_edit", "yolo"]
+    static let claudePermissionModes = ["default", "acceptEdits", "bypassPermissions"]
 
     /// The frontmatter keys only this agent reads.
     var ownKeys: [String] {
         switch self {
-        case .claude: return ["allowedTools"]
+        case .claude: return ["allowedTools", "permissionMode"]
         case .codex: return ["sandbox", "network"]
         case .gemini: return ["allowedTools", "approval"]
         }
@@ -277,6 +278,7 @@ enum Agent: String, CaseIterable {
         switch self {
         case .claude:
             let tools = meta["allowedTools"] ?? ""
+            if meta["permissionMode"] == "bypassPermissions" { return tr("Every tool, no approval") }
             return tools.isEmpty ? tr("No tool: text answer only") : tools
         case .codex:
             let sandbox = meta["sandbox"].flatMap { $0.isEmpty ? nil : $0 } ?? "read-only"
@@ -308,6 +310,9 @@ enum Agent: String, CaseIterable {
             if let network = meta["network"], !network.isEmpty, network != "true", network != "false" {
                 problems.append(tr("network: write true or false."))
             }
+        }
+        if self == .claude, let mode = meta["permissionMode"], !mode.isEmpty, !Self.claudePermissionModes.contains(mode) {
+            problems.append(tr("permissionMode: \"%@\" is not one of %@.", mode, Self.claudePermissionModes.joined(separator: ", ")))
         }
         if self == .gemini, let approval = meta["approval"], !approval.isEmpty, !Self.geminiApprovals.contains(approval) {
             problems.append(tr("approval: \"%@\" is not one of %@.", approval, Self.geminiApprovals.joined(separator: ", ")))

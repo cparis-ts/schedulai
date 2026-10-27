@@ -77,6 +77,9 @@ case $AGENT in
   claude)
     cmd=(claude -p "$PROMPT")
     [[ -n $TOOLS ]] && cmd+=(--allowedTools "$TOOLS")
+    # `bypassPermissions` approves every call (claude --dangerously-skip-permissions).
+    PERMISSION_MODE="$(meta permissionMode)"
+    [[ -n $PERMISSION_MODE ]] && cmd+=(--permission-mode "$PERMISSION_MODE")
     [[ -n $MODEL ]] && cmd+=(--model "$MODEL")
     ;;
   codex)

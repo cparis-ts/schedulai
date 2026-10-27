@@ -80,6 +80,7 @@ enum L10n {
         "Activate": "Activer",
         // Agents
         "No tool: text answer only": "Aucun outil : réponse texte seulement",
+        "Every tool, no approval": "Tous les outils, sans approbation",
         "Sandbox %@ + network": "Bac à sable %@ + réseau",
         "Sandbox %@": "Bac à sable %@",
         "Approval %@": "Approbation %@",
@@ -88,6 +89,7 @@ enum L10n {
         "sandbox: \"%@\" is not one of %@.": "sandbox : « %@ » ne fait pas partie de %@.",
         "network: write true or false.": "network : écris true ou false.",
         "approval: \"%@\" is not one of %@.": "approval : « %@ » ne fait pas partie de %@.",
+        "permissionMode: \"%@\" is not one of %@.": "permissionMode : « %@ » ne fait pas partie de %@.",
         "%@ is not installed": "%@ n'est pas installé",
         "Runs will fail until it is. Click for how to install it.": "Les passages échoueront tant qu'il ne l'est pas. Clique pour savoir comment l'installer.",
         "No AI agent found": "Aucun agent IA trouvé",

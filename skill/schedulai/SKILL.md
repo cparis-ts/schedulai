@@ -15,7 +15,7 @@ asks for another: set `agent:` accordingly (`claude` is the default when absent)
 
 | You are | `agent:` | Headless run | Permission keys |
 |---|---|---|---|
-| Claude Code | `claude` (or omit) | `claude -p` | `allowedTools` |
+| Claude Code | `claude` (or omit) | `claude -p` | `allowedTools`, `permissionMode` |
 | Codex | `codex` | `codex exec` | `sandbox`, `network` |
 | Gemini CLI | `gemini` | `gemini -p` | `allowedTools`, `approval` |
 
@@ -93,6 +93,11 @@ approved, and a refused call is skipped, not asked. Grant the least that works.
 - `Edit`/`Write` only if the job's purpose is to write files.
 - Check the MCP servers it needs are reachable from `workdir`:
   `cd <workdir> && claude mcp list`.
+
+- `permissionMode: bypassPermissions` approves every call, `allowedTools` or
+  not (what `claude --dangerously-skip-permissions` does) — only with the
+  user's explicit yes, and say so when you switch the job on. `acceptEdits`
+  also approves file edits.
 
 **Codex** — a sandbox, not a tool list:
 
