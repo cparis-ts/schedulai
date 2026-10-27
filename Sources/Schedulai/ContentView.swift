@@ -352,6 +352,13 @@ private struct JobDetail: View {
                 ))
                 .toggleStyle(.switch)
                 .tint(.brand)
+                Toggle(tr("No guardrails"), isOn: Binding(
+                    get: { job.agent.isUnrestricted(job.meta) },
+                    set: { $0 ? store.askToUnrestrict(job) : store.setUnrestricted(job, false) }
+                ))
+                .toggleStyle(.switch)
+                .tint(.orange)
+                .help(tr("On: the agent approves every call and runs outside its sandbox. Off: only the permissions written in prompt.md."))
                 if !job.history.isEmpty {
                     RunDots(runs: job.history)
                 }

@@ -13,6 +13,10 @@ enum CLI {
       enable <id>       validate, then schedule it (writes its LaunchAgent)
       disable <id>      unschedule it
       delete <id>       unschedule it and move its folder to the Trash
+      bypass <id> on|off
+                        on: no guardrails — the agent approves every call, no sandbox
+                        (claude bypassPermissions · codex danger-full-access · gemini yolo);
+                        off: back to the permissions written in prompt.md
       session <id> [agent]
                         open an AI session on the job in this terminal, its brief
                         as the first message (agent: claude, codex or gemini)
@@ -83,6 +87,22 @@ enum CLI {
                 return 1
             }
             print("deleted: \(job.id) (folder moved to the Trash)")
+            return 0
+        case ("bypass", 3):
+            guard let job = find(args[1], in: store) else { return 1 }
+            guard args[2] == "on" || args[2] == "off" else {
+                printError("write on or off")
+                return 2
+            }
+            store.setUnrestricted(job, args[2] == "on")
+            if let error = store.errorMessage {
+                printError(error)
+                return 1
+            }
+            let setting = job.agent.unrestrictedSetting
+            print(args[2] == "on"
+                  ? "\(job.id): no guardrails (\(setting.key): \(setting.value))"
+                  : "\(job.id): guardrails back (\(setting.key) removed)")
             return 0
         case ("session", 2), ("session", 3):
             guard let job = find(args[1], in: store) else { return 1 }

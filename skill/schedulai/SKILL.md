@@ -99,6 +99,8 @@ approved, and a refused call is skipped, not asked. Grant the least that works.
   user's explicit yes, and say so when you switch the job on. `acceptEdits`
   also approves file edits.
 
+- No guardrails for any agent, once the user said yes: `schedulai bypass <id> on`
+  (`off` to go back) — the app's *No guardrails* switch does the same.
 - Any agent: `args:` appends options to its command line as written
   (`args: --dangerously-skip-permissions`, `args: --add-dir ~/other-repo`) — for
   an option SchedulAI has no key for. Same rule: one that widens permissions

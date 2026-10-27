@@ -42,6 +42,10 @@ The prompt. End it with the report you want to read.
   | `codex` | `sandbox`: `read-only` (default), `workspace-write`, `danger-full-access`; `network: true` to let commands reach the network |
   | `gemini` | `approval`: `default` (only `allowedTools` pass), `auto_edit`, `yolo`; `allowedTools`: `"run_shell_command(gh pr list)"` |
 
+  The **No guardrails** switch on a job (or `schedulai bypass <id> on|off`) writes the line
+  that lets its agent do anything — `permissionMode: bypassPermissions`, `sandbox:
+  danger-full-access` or `approval: yolo` — after a confirmation, and removes it to go back.
+
   Any agent also takes `args:`, options appended to its command line as written —
   `--dangerously-skip-permissions`, `--add-dir ~/other-repo`, `--search`: whatever the agent
   accepts.
@@ -79,6 +83,7 @@ through the app's own code:
 
 ```
 schedulai list | check <id> | run <id> | enable <id> | disable <id> | delete <id>
+schedulai bypass <id> on|off
 schedulai session <id> [agent] | brief <id> | dir | version
 ```
 

@@ -240,6 +240,32 @@ final class JobStore {
         reload()
     }
 
+    /// "No guardrails" on: the agent approves every call and drops its
+    /// sandbox. Off: back to the job's own permission keys (the default ones).
+    func setUnrestricted(_ job: Job, _ on: Bool) {
+        let setting = job.agent.unrestrictedSetting
+        setMeta(setting.key, on ? setting.value : nil, of: job)
+        if !on, job.agent == .claude {
+            let args = Agent.words(job.meta["args"]).filter { $0 != Agent.claudeSkipFlag }
+            if args.count != Agent.words(job.meta["args"]).count {
+                setMeta("args", args.isEmpty ? nil : args.joined(separator: " "), of: job)
+            }
+        }
+    }
+
+    /// Asks first: a job with no guardrails runs every command it decides to, unattended.
+    func askToUnrestrict(_ job: Job) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = tr("Run \u{201C}%@\u{201D} with no guardrails?", job.name)
+        alert.informativeText = tr("%@ will approve every call on its own — commands, file edits, network — with nobody to say no. Keep it for crons you trust, in a workdir you can afford to lose.", job.agent.displayName)
+        alert.addButton(withTitle: tr("No guardrails")).hasDestructiveAction = true
+        alert.addButton(withTitle: tr("Cancel"))
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        setUnrestricted(job, true)
+    }
+
     /// Asks first, then deletes; the window, the menu bar and the Dock all come here.
     @discardableResult
     func askToDelete(_ job: Job) -> Bool {

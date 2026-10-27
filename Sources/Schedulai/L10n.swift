@@ -73,6 +73,10 @@ enum L10n {
         "Its schedule is removed and its folder — prompt and reports — goes to the Trash.":
             "Sa planification est retirée et son dossier — prompt et comptes rendus — part à la Corbeille.",
         "Move to Trash": "Mettre à la Corbeille",
+        "No guardrails": "Sans contrôle",
+        "Run \u{201C}%@\u{201D} with no guardrails?": "Lancer « %@ » sans contrôle ?",
+        "%@ will approve every call on its own — commands, file edits, network — with nobody to say no. Keep it for crons you trust, in a workdir you can afford to lose.": "%@ approuvera seul chaque action — commandes, modifications de fichiers, réseau — sans personne pour dire non. À réserver aux crons de confiance, dans un dossier que tu peux te permettre de perdre.",
+        "On: the agent approves every call and runs outside its sandbox. Off: only the permissions written in prompt.md.": "Activé : l’agent approuve chaque action et sort de son bac à sable. Désactivé : seulement les permissions écrites dans prompt.md.",
         "Could not delete the cron: %@": "Impossible de supprimer le cron : %@",
         "Delete…": "Supprimer…",
         "Delete this cron (its folder goes to the Trash)": "Supprimer ce cron (son dossier part à la Corbeille)",

@@ -274,6 +274,29 @@ enum Agent: String, CaseIterable {
         }
     }
 
+    /// The frontmatter line that lets this agent do anything without asking:
+    /// the app's "No guardrails" switch writes it, and removes it to go back.
+    var unrestrictedSetting: (key: String, value: String) {
+        switch self {
+        case .claude: return ("permissionMode", "bypassPermissions")
+        case .codex: return ("sandbox", "danger-full-access")
+        case .gemini: return ("approval", "yolo")
+        }
+    }
+
+    /// Whether the job runs with no guardrails: every call approved, no sandbox.
+    func isUnrestricted(_ meta: [String: String]) -> Bool {
+        let setting = unrestrictedSetting
+        if meta[setting.key] == setting.value { return true }
+        return self == .claude && Self.words(meta["args"]).contains(Self.claudeSkipFlag)
+    }
+
+    static let claudeSkipFlag = "--dangerously-skip-permissions"
+
+    static func words(_ text: String?) -> [String] {
+        (text ?? "").split(whereSeparator: \.isWhitespace).map(String.init)
+    }
+
     /// What the job may do, in one line, as the runner will apply it.
     func permissions(_ meta: [String: String]) -> String {
         let base = basePermissions(meta)
@@ -285,9 +308,7 @@ enum Agent: String, CaseIterable {
         switch self {
         case .claude:
             let tools = meta["allowedTools"] ?? ""
-            if meta["permissionMode"] == "bypassPermissions" || (meta["args"] ?? "").contains("--dangerously-skip-permissions") {
-                return tr("Every tool, no approval")
-            }
+            if isUnrestricted(meta) { return tr("Every tool, no approval") }
             return tools.isEmpty ? tr("No tool: text answer only") : tools
         case .codex:
             let sandbox = meta["sandbox"].flatMap { $0.isEmpty ? nil : $0 } ?? "read-only"
