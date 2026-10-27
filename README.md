@@ -51,6 +51,12 @@ posts a notification.
 - **Window** — every job with its state, next run, success rate and last runs; the report
   rendered from Markdown (or raw); the prompt editable in place, name and description included;
   right-click a job (or press Delete) to run, pause or delete it — its folder goes to the Trash.
+- **Challenge with AI** — a job did the wrong thing? Open an interactive Claude Code, Codex or
+  Gemini session on it, in its workdir, whose first message is the job's brief: schedule,
+  permissions, last runs, the reports (the one you were reading first), the prompt, and what you
+  say went wrong. The session reproduces what the run saw, fixes `prompt.md` with you, checks it
+  and offers a test run. It opens in your terminal, or copy its command into your own; from a
+  terminal, `schedulai session <id>`.
 - **Menu bar** — a clock with a sparkle (a dot when a run failed); its menu lists the jobs,
   runs or pauses them, and holds *Open at login*, *Language* and *Check for Updates…*.
 - **Dock** — a badge counts the failed jobs; right-click for the same job menu.
@@ -67,7 +73,8 @@ tools it used, test-runs it and switches it on. It drives the `schedulai` comman
 through the app's own code:
 
 ```
-schedulai list | check <id> | run <id> | enable <id> | disable <id> | delete <id> | dir | version
+schedulai list | check <id> | run <id> | enable <id> | disable <id> | delete <id>
+schedulai session <id> [agent] | brief <id> | dir | version
 ```
 
 ## Install

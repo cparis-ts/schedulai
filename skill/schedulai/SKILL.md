@@ -141,6 +141,12 @@ state and lets them pause it.
 
 ## Changing an existing job
 
+When the user says a job did the wrong thing, start from what it actually did:
+`schedulai brief <id>` prints its schedule, permissions, last runs, latest
+reports and prompt — read it before proposing a change, then reproduce the
+step that went wrong. (In the app, *Challenge with AI* opens a session with that
+brief as its first message.)
+
 `schedulai list`, edit its `prompt.md`, `schedulai check <id>`, then
 `schedulai enable <id>` again so a new `schedule:` reaches launchd (the app
 also picks it up within seconds while it is open). Pause with `disable`; delete

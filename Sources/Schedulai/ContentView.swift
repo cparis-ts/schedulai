@@ -140,6 +140,9 @@ private struct Sidebar: View {
                     store.setEnabled(job, !job.enabled)
                 }
                 Button(tr("Open folder"), systemImage: "folder") { NSWorkspace.shared.open(job.dir) }
+                Button(tr("Challenge with AI"), systemImage: "bubble.left.and.text.bubble.right") {
+                    Session.start(job, agent: store.sessionAgent(for: job), note: nil, focus: job.logs.first, store: store)
+                }
                 Divider()
                 Button(tr("Delete…"), systemImage: "trash", role: .destructive) { store.askToDelete(job) }
             }
@@ -248,6 +251,7 @@ private struct JobDetail: View {
     /// What the editor shows, and the file's text it started from.
     @State private var draft = ""
     @State private var savedText = ""
+    @State private var showingChallenge = false
 
     enum MetaField {
         case name, about
@@ -400,6 +404,12 @@ private struct JobDetail: View {
             }
             Button(tr("Open folder"), systemImage: "folder") { NSWorkspace.shared.open(job.dir) }
                 .buttonStyle(.glass)
+            Button(tr("Challenge with AI…"), systemImage: "bubble.left.and.text.bubble.right") { showingChallenge = true }
+                .buttonStyle(.glass)
+                .help(tr("Open an AI session that knows this cron: its schedule, permissions, last runs and reports, and its prompt"))
+                .sheet(isPresented: $showingChallenge) {
+                    ChallengeSheet(store: store, job: job, focus: tab == .log ? selectedLog ?? job.logs.first : nil)
+                }
             Button(tr("Delete…"), systemImage: "trash", role: .destructive) { store.askToDelete(job) }
                 .labelStyle(.iconOnly)
                 .buttonStyle(.glass)
@@ -643,6 +653,80 @@ private struct StatTile: View {
 }
 
 // MARK: - New job
+
+/// "Challenge with AI": what went wrong (optional), which agent, then a
+/// session in the terminal — or its command, for a terminal of your own.
+private struct ChallengeSheet: View {
+    let store: JobStore
+    let job: Job
+    let focus: URL?
+    @Environment(\.dismiss) private var dismiss
+    @State private var note = ""
+    @State private var agent: Agent = .claude
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: "bubble.left.and.text.bubble.right")
+                    .font(.title)
+                    .foregroundStyle(Color.brand)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tr("Challenge with AI")).font(.title2.bold())
+                    Text(job.name).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Text(tr("The session starts knowing this cron: its schedule, permissions, last runs and reports, and its prompt. It can fix prompt.md with you, check it and test it."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            TextField(tr("What went wrong? e.g. \"card TSK-123 was not moved\" (optional)"), text: $note, axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(2...5)
+                .padding(10)
+                .glassEffect(.regular, in: .rect(cornerRadius: 12))
+            if let focus {
+                Label(tr("Report quoted first: %@", focus.lastPathComponent), systemImage: "doc.text")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Picker(tr("Agent"), selection: $agent) {
+                ForEach(Agent.allCases, id: \.self) { agent in
+                    Text(store.isInstalled(agent) ? agent.displayName : tr("%@ (not installed)", agent.displayName))
+                        .tag(agent)
+                }
+            }
+            .pickerStyle(.menu)
+            .fixedSize()
+            HStack {
+                Button(copied ? tr("Copied") : tr("Copy the command"), systemImage: copied ? "checkmark" : "doc.on.doc") {
+                    if let command = Session.start(job, agent: agent, note: note, focus: focus, store: store, open: false) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(command, forType: .string)
+                        copied = true
+                    }
+                }
+                .buttonStyle(.glass)
+                .help(tr("For a terminal of your own: paste it there"))
+                Spacer()
+                Button(tr("Cancel"), role: .cancel) { dismiss() }
+                    .buttonStyle(.glass)
+                Button(tr("Open the session")) {
+                    dismiss()
+                    Session.start(job, agent: agent, note: note, focus: focus, store: store)
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.glassProminent)
+                .tint(.brand)
+                .disabled(!store.isInstalled(agent))
+            }
+            .controlSize(.large)
+        }
+        .padding(22)
+        .frame(width: 500)
+        .onAppear { agent = store.sessionAgent(for: job) }
+    }
+}
 
 private struct NewJobSheet: View {
     let onCreate: (String) -> Void

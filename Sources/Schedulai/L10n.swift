@@ -51,6 +51,23 @@ enum L10n {
     }
 
     static let french: [String: String] = [
+        // Challenge with AI
+        "Challenge with AI…": "Challenger avec l'IA…",
+        "Challenge with AI": "Challenger avec l'IA",
+        "Open an AI session that knows this cron: its schedule, permissions, last runs and reports, and its prompt":
+            "Ouvre une session IA qui connaît ce cron : sa planification, ses permissions, ses derniers passages et comptes rendus, et son prompt",
+        "The session starts knowing this cron: its schedule, permissions, last runs and reports, and its prompt. It can fix prompt.md with you, check it and test it.":
+            "La session démarre en connaissant ce cron : sa planification, ses permissions, ses derniers passages et comptes rendus, et son prompt. Elle peut corriger prompt.md avec toi, le vérifier et le tester.",
+        "What went wrong? e.g. \"card TSK-123 was not moved\" (optional)": "Qu'est-ce qui n'a pas marché ? ex. « la carte TSK-123 n'a pas été déplacée » (facultatif)",
+        "Report quoted first: %@": "Compte rendu cité en premier : %@",
+        "Agent": "Agent",
+        "%@ (not installed)": "%@ (non installé)",
+        "Copy the command": "Copier la commande",
+        "Copied": "Copié",
+        "For a terminal of your own: paste it there": "Pour ton propre terminal : colle-la dedans",
+        "Open the session": "Ouvrir la session",
+        "Could not prepare the session: %@": "Impossible de préparer la session : %@",
+        "No app opens .command files; copy the command instead.": "Aucune app n'ouvre les fichiers .command ; copie plutôt la commande.",
         // Delete
         "Delete \u{201C}%@\u{201D}?": "Supprimer « %@ » ?",
         "Its schedule is removed and its folder — prompt and reports — goes to the Trash.":

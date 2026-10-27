@@ -13,6 +13,11 @@ enum CLI {
       enable <id>       validate, then schedule it (writes its LaunchAgent)
       disable <id>      unschedule it
       delete <id>       unschedule it and move its folder to the Trash
+      session <id> [agent]
+                        open an AI session on the job in this terminal, its brief
+                        as the first message (agent: claude, codex or gemini)
+      brief <id>        print what an AI needs to challenge the job: schedule,
+                        permissions, last runs and reports, the prompt
       run <id>          run it now in the foreground; prints its log, exits with its code
       dir               print the jobs directory
       version           print the installed version
@@ -77,6 +82,34 @@ enum CLI {
                 return 1
             }
             print("deleted: \(job.id) (folder moved to the Trash)")
+            return 0
+        case ("session", 2), ("session", 3):
+            guard let job = find(args[1], in: store) else { return 1 }
+            var agent = store.sessionAgent(for: job)
+            if args.count == 3 {
+                guard let chosen = Agent(rawValue: args[2].lowercased()) else {
+                    printError("unknown agent \"\(args[2])\": claude, codex or gemini")
+                    return 2
+                }
+                agent = chosen
+            }
+            guard store.isInstalled(agent) else {
+                printError("\(agent.rawValue) is not installed; see \(agent.installURL.absoluteString)")
+                return 1
+            }
+            guard let command = Session.start(job, agent: agent, note: nil, focus: job.logs.first, store: store, open: false) else {
+                printError(store.errorMessage ?? "could not prepare the session")
+                return 1
+            }
+            // The agent takes over this terminal.
+            let argv: [String] = ["/bin/zsh", "-lc", command]
+            var cArgs = argv.map { strdup($0) } + [nil]
+            execv("/bin/zsh", &cArgs)
+            printError("could not start zsh: \(String(cString: strerror(errno)))")
+            return 1
+        case ("brief", 2):
+            guard let job = find(args[1], in: store) else { return 1 }
+            print(Session.brief(job, store: store))
             return 0
         case ("run", 2):
             guard let job = find(args[1], in: store) else { return 1 }

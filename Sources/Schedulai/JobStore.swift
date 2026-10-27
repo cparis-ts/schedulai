@@ -185,6 +185,11 @@ final class JobStore {
         return agentPaths[agent] != nil
     }
 
+    /// The job's own agent when it is installed, else the first one that is.
+    func sessionAgent(for job: Job) -> Agent {
+        isInstalled(job.agent) ? job.agent : installedAgents.first ?? job.agent
+    }
+
     /// The agents found, in the order a new job prefers them.
     var installedAgents: [Agent] { Agent.allCases.filter(isInstalled) }
 

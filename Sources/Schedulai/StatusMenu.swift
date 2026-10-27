@@ -120,6 +120,9 @@ enum JobMenu {
             submenu.addItem(ClosureMenuItem(tr("Open last log")) { NSWorkspace.shared.open(log) })
         }
         submenu.addItem(ClosureMenuItem(tr("Edit prompt…")) { store.showMainWindow(job: job.id, editPrompt: true) })
+        submenu.addItem(ClosureMenuItem(tr("Challenge with AI")) {
+            Session.start(job, agent: store.sessionAgent(for: job), note: nil, focus: job.logs.first, store: store)
+        })
         submenu.addItem(.separator())
         let toggle = ClosureMenuItem(tr("Active")) { store.setEnabled(job, !job.enabled) }
         toggle.state = job.enabled ? .on : .off
