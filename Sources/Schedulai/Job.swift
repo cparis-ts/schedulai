@@ -262,7 +262,8 @@ enum Agent: String, CaseIterable {
 
     static let codexSandboxes = ["read-only", "workspace-write", "danger-full-access"]
     static let geminiApprovals = ["default", "auto_edit", "yolo"]
-    static let claudePermissionModes = ["default", "acceptEdits", "bypassPermissions"]
+    /// What `claude --permission-mode` takes (`default` being an alias it still accepts).
+    static let claudePermissionModes = ["default", "acceptEdits", "auto", "bypassPermissions", "dontAsk", "manual", "plan"]
 
     /// The frontmatter keys only this agent reads.
     var ownKeys: [String] {
@@ -275,10 +276,18 @@ enum Agent: String, CaseIterable {
 
     /// What the job may do, in one line, as the runner will apply it.
     func permissions(_ meta: [String: String]) -> String {
+        let base = basePermissions(meta)
+        guard let args = meta["args"], !args.isEmpty else { return base }
+        return tr("%@ · extra options: %@", base, args)
+    }
+
+    private func basePermissions(_ meta: [String: String]) -> String {
         switch self {
         case .claude:
             let tools = meta["allowedTools"] ?? ""
-            if meta["permissionMode"] == "bypassPermissions" { return tr("Every tool, no approval") }
+            if meta["permissionMode"] == "bypassPermissions" || (meta["args"] ?? "").contains("--dangerously-skip-permissions") {
+                return tr("Every tool, no approval")
+            }
             return tools.isEmpty ? tr("No tool: text answer only") : tools
         case .codex:
             let sandbox = meta["sandbox"].flatMap { $0.isEmpty ? nil : $0 } ?? "read-only"

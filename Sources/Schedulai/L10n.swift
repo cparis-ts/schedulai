@@ -81,6 +81,7 @@ enum L10n {
         // Agents
         "No tool: text answer only": "Aucun outil : réponse texte seulement",
         "Every tool, no approval": "Tous les outils, sans approbation",
+        "%@ · extra options: %@": "%@ · options en plus : %@",
         "Sandbox %@ + network": "Bac à sable %@ + réseau",
         "Sandbox %@": "Bac à sable %@",
         "Approval %@": "Approbation %@",

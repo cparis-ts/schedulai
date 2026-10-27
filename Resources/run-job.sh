@@ -73,6 +73,12 @@ write_status null null
 # whichever agent ran: that is what the app shows and the notification quotes.
 PROMPT="$(body)"
 REPORT=""
+# `args:` — options of the job's own, appended to the agent's command line as
+# written (shell words, quotes honoured): e.g. --dangerously-skip-permissions.
+ARGS="$(meta args)"
+extra=()
+[[ -n $ARGS ]] && extra=("${(Q@)${(z)ARGS}}")
+extra=("${extra[@]/#\~/$HOME}")
 case $AGENT in
   claude)
     cmd=(claude -p "$PROMPT")
@@ -81,6 +87,7 @@ case $AGENT in
     PERMISSION_MODE="$(meta permissionMode)"
     [[ -n $PERMISSION_MODE ]] && cmd+=(--permission-mode "$PERMISSION_MODE")
     [[ -n $MODEL ]] && cmd+=(--model "$MODEL")
+    cmd+=("${extra[@]}")
     ;;
   codex)
     # Permissions are a sandbox, not a tool list: read-only unless the job
@@ -90,7 +97,7 @@ case $AGENT in
     cmd=(codex exec --skip-git-repo-check -s "${SANDBOX:-read-only}" -o "$REPORT")
     [[ $(meta network) == true ]] && cmd+=(-c sandbox_workspace_write.network_access=true)
     [[ -n $MODEL ]] && cmd+=(-m "$MODEL")
-    cmd+=("$PROMPT")
+    cmd+=("${extra[@]}" "$PROMPT")
     ;;
   gemini)
     # Headless, a call needing approval is refused: `approval: default` lets
@@ -100,6 +107,7 @@ case $AGENT in
     cmd=(gemini -p "$PROMPT" --approval-mode "${APPROVAL:-default}")
     [[ -n $TOOLS ]] && cmd+=(--allowed-tools "$TOOLS")
     [[ -n $MODEL ]] && cmd+=(-m "$MODEL")
+    cmd+=("${extra[@]}")
     ;;
   *)
     cmd=()

@@ -26,6 +26,7 @@ workdir: ~/projects/my-app
 agent: claude            # optional: claude (default), codex or gemini
 allowedTools: "Bash(gh pr list:*),Bash(gh pr view:*)"
 model: sonnet            # optional, passed as is to the agent
+args: --verbose          # optional: more options for the agent, as you would type them
 ---
 The prompt. End it with the report you want to read.
 ```
@@ -37,9 +38,13 @@ The prompt. End it with the report you want to read.
 
   | `agent:` | Permission keys |
   |---|---|
-  | `claude` | `allowedTools`: `"Bash(gh pr list:*),mcp__github__get_pr"` — exactly these tools; `permissionMode`: `default`, `acceptEdits`, `bypassPermissions` (every call approved) |
+  | `claude` | `allowedTools`: `"Bash(gh pr list:*),mcp__github__get_pr"` — exactly these tools; `permissionMode`: `default`, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions` (every call approved) |
   | `codex` | `sandbox`: `read-only` (default), `workspace-write`, `danger-full-access`; `network: true` to let commands reach the network |
   | `gemini` | `approval`: `default` (only `allowedTools` pass), `auto_edit`, `yolo`; `allowedTools`: `"run_shell_command(gh pr list)"` |
+
+  Any agent also takes `args:`, options appended to its command line as written —
+  `--dangerously-skip-permissions`, `--add-dir ~/other-repo`, `--search`: whatever the agent
+  accepts.
 
   `schedulai check <id>` flags a key the job's agent ignores, and an agent that is not installed.
 

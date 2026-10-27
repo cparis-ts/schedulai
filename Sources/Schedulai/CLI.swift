@@ -30,8 +30,9 @@ enum CLI {
       workdir: ~/projects/my-app
       agent: claude                (optional: claude, codex or gemini; claude when absent)
       model: sonnet                (optional)
+      args: --verbose              (optional: more options for the agent's command line, as you would type them)
       …the agent's permissions:
-        claude  allowedTools: "Bash(gh pr list:*),Bash(gh pr view:*)"   permissionMode: default | acceptEdits | bypassPermissions
+        claude  allowedTools: "Bash(gh pr list:*),Bash(gh pr view:*)"   permissionMode: default | acceptEdits | auto | dontAsk | bypassPermissions
         codex   sandbox: read-only | workspace-write | danger-full-access   network: true
         gemini  allowedTools: "run_shell_command(gh pr list)"   approval: default | auto_edit | yolo
       ---

@@ -99,6 +99,11 @@ approved, and a refused call is skipped, not asked. Grant the least that works.
   user's explicit yes, and say so when you switch the job on. `acceptEdits`
   also approves file edits.
 
+- Any agent: `args:` appends options to its command line as written
+  (`args: --dangerously-skip-permissions`, `args: --add-dir ~/other-repo`) — for
+  an option SchedulAI has no key for. Same rule: one that widens permissions
+  needs the user's explicit yes.
+
 **Codex** — a sandbox, not a tool list:
 
 - `sandbox: read-only` (the default): reads files and runs read-only commands.
