@@ -35,7 +35,7 @@ enum Schedule: Equatable {
     static func parse(_ text: String) throws -> Schedule {
         let lower = text.lowercased().trimmingCharacters(in: .whitespaces)
         if lower.isEmpty {
-            throw ScheduleError(message: tr("No `schedule:` line in the frontmatter."))
+            throw ScheduleError(message: tr("No `schedule:` line in the frontmatter (nor `after:`, `watch:` or `atLogin:`)."))
         }
         if lower.hasPrefix("every ") {
             let amount = lower.dropFirst("every ".count).trimmingCharacters(in: .whitespaces)
@@ -184,6 +184,106 @@ struct RunStatus: Decodable, Hashable {
     var endedAt: Date?
     var exitCode: Int?
     var log: String?
+    /// The prompt.md version the run ran (a commit of ~/.claude/scheduled/.git).
+    var promptRev: String?
+    /// Claude runs only: the session (`claude --resume`), what it cost, its
+    /// tokens, and how many calls its permissions refused.
+    var sessionId: String?
+    var costUSD: Double?
+    var inputTokens: Int?
+    var outputTokens: Int?
+    var denied: Int?
+    /// "budget" when `budget:` skipped the run.
+    var skipped: String?
+    var timedOut: Bool?
+    /// The job whose success started this run (`after:`).
+    var after: String?
+}
+
+/// What starts a job besides its schedule: another job's success, a change
+/// on disk, the login.
+struct Triggers: Equatable {
+    /// `after: a, b` — runs when one of these jobs succeeds.
+    var after: [String]
+    /// `watch: ~/inbox, ~/notes.md` — runs when one of these paths changes (launchd WatchPaths).
+    var watch: [String]
+    /// `atLogin: true` — runs when the LaunchAgent loads: at login, or when switched on.
+    var atLogin: Bool
+
+    init(_ meta: [String: String]) {
+        func list(_ key: String) -> [String] {
+            (meta[key] ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        }
+        after = list("after")
+        watch = list("watch")
+        atLogin = meta["atLogin"]?.lowercased() == "true"
+    }
+
+    var isEmpty: Bool { after.isEmpty && watch.isEmpty && !atLogin }
+
+    static func expand(_ path: String) -> String {
+        path.hasPrefix("~") ? URL.homeDirectory.path + path.dropFirst() : path
+    }
+
+    /// "after Triage · when ~/inbox changes · at login"; `names` maps a job id to its name.
+    func summary(names: [String: String]) -> String {
+        var parts: [String] = []
+        if !after.isEmpty { parts.append(tr("after %@", after.map { names[$0] ?? $0 }.joined(separator: ", "))) }
+        if !watch.isEmpty { parts.append(tr("when %@ changes", watch.joined(separator: ", "))) }
+        if atLogin { parts.append(tr("at login")) }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// The run-level keys every agent takes (timeout, budget, notify, webhook) and
+/// the trigger keys: what the runner would misread, as a list of problems.
+enum RunKeys {
+    static let notifyModes = ["always", "failure", "changes", "never"]
+
+    /// Seconds, from `timeout:` as run-job.sh reads it (90s, 45m, 2h, or bare minutes).
+    static func timeoutSeconds(_ text: String) -> Int? {
+        let text = text.trimmingCharacters(in: .whitespaces).lowercased()
+        let units: [Character: Int] = ["s": 1, "m": 60, "h": 3600]
+        if let last = text.last, let unit = units[last], let n = Int(text.dropLast()), n > 0 { return n * unit }
+        if let n = Int(text), n > 0 { return n * 60 }
+        return nil
+    }
+
+    static func budget(_ text: String?) -> Double? {
+        guard let text else { return nil }
+        return Double(text.filter { $0.isNumber || $0 == "." })
+    }
+
+    static func problems(_ meta: [String: String], id: String, jobIDs: Set<String>) -> [String] {
+        var problems: [String] = []
+        if let timeout = meta["timeout"], !timeout.isEmpty, timeoutSeconds(timeout) == nil {
+            problems.append(tr("timeout: \"%@\" — write e.g. 90s, 45m or 2h.", timeout))
+        }
+        if let budget = meta["budget"], !budget.isEmpty, Self.budget(budget) == nil {
+            problems.append(tr("budget: \"%@\" — write dollars per 24 hours, e.g. 5.", budget))
+        }
+        if let notify = meta["notify"], !notify.isEmpty, !notifyModes.contains(notify) {
+            problems.append(tr("notify: \"%@\" is not one of %@.", notify, notifyModes.joined(separator: ", ")))
+        }
+        if let webhook = meta["webhook"], !webhook.isEmpty, !webhook.hasPrefix("https://"), !webhook.hasPrefix("http://") {
+            problems.append(tr("webhook: \"%@\" is not an http(s) URL.", webhook))
+        }
+        let triggers = Triggers(meta)
+        for other in triggers.after {
+            if other == id {
+                problems.append(tr("after: a job cannot wait for itself."))
+            } else if !jobIDs.contains(other) {
+                problems.append(tr("after: no job \"%@\".", other))
+            }
+        }
+        for path in triggers.watch where !FileManager.default.fileExists(atPath: Triggers.expand(path)) {
+            problems.append(tr("watch: %@ does not exist.", path))
+        }
+        if let atLogin = meta["atLogin"], !atLogin.isEmpty, !["true", "false"].contains(atLogin.lowercased()) {
+            problems.append(tr("atLogin: write true or false."))
+        }
+        return problems
+    }
 }
 
 struct Job: Identifiable {
@@ -197,8 +297,10 @@ struct Job: Identifiable {
     /// The frontmatter's `description:`, nil when absent or empty.
     var about: String?
     var scheduleText: String
+    /// Nil with no `schedule:` line (fine when another trigger starts the job) or an invalid one.
     var schedule: Schedule?
     var scheduleError: String?
+    var triggers: Triggers
     var workdir: String
     var agent: Agent
     var agentError: String?
@@ -218,6 +320,21 @@ struct Job: Identifiable {
     var promptURL: URL { dir.appending(path: "prompt.md") }
     var expandedWorkdir: String {
         workdir.hasPrefix("~") ? URL.homeDirectory.path + workdir.dropFirst() : workdir
+    }
+
+    /// Something starts it: a schedule, another job, a path, the login.
+    var hasTrigger: Bool { schedule != nil || !triggers.isEmpty }
+
+    /// "Every day at 08:00 · after Triage", or what is wrong with the schedule.
+    func triggerSummary(names: [String: String]) -> String {
+        if let scheduleError { return scheduleError }
+        return [schedule?.summary, triggers.isEmpty ? nil : triggers.summary(names: names)]
+            .compactMap { $0 }.joined(separator: " · ").capitalizedFirstLetter
+    }
+
+    /// What its Claude runs cost since `date`.
+    func cost(since date: Date) -> Double {
+        history.filter { $0.startedAt >= date }.compactMap(\.costUSD).reduce(0, +)
     }
 
     var state: State {
@@ -355,4 +472,8 @@ enum Agent: String, CaseIterable {
         let others = Set(Agent.allCases.filter { $0 != self }.flatMap(\.ownKeys)).subtracting(ownKeys)
         return others.filter { !(meta[$0] ?? "").isEmpty }.sorted()
     }
+}
+
+extension String {
+    var capitalizedFirstLetter: String { prefix(1).uppercased() + dropFirst() }
 }

@@ -129,7 +129,7 @@ private struct Sidebar: View {
     var body: some View {
         List(selection: $selection) {
             ForEach(store.jobs) { job in
-                JobRow(job: job)
+                JobRow(job: job, names: store.jobNames)
                     .tag(job.id)
             }
         }
@@ -141,7 +141,8 @@ private struct Sidebar: View {
                 }
                 Button(tr("Open folder"), systemImage: "folder") { NSWorkspace.shared.open(job.dir) }
                 Button(tr("Challenge with AI"), systemImage: "bubble.left.and.text.bubble.right") {
-                    Session.start(job, agent: store.sessionAgent(for: job), note: nil, focus: job.logs.first, store: store)
+                    Session.start(job, agent: store.sessionAgent(for: job), note: nil, focus: job.logs.first,
+                          resume: Session.resumableRun(job, log: job.logs.first), store: store)
                 }
                 Divider()
                 Button(tr("Delete…"), systemImage: "trash", role: .destructive) { store.askToDelete(job) }
@@ -163,7 +164,8 @@ private struct Sidebar: View {
                     .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("SchedulAI \(Updater.shared.currentVersion)").font(.headline)
-                    Text(store.summary + " · " + store.headerCaption)
+                    Text([store.summary, store.headerCaption, store.monthCost > 0 ? tr("%@ this month", RunFormat.cost(store.monthCost)) : nil]
+                        .compactMap { $0 }.joined(separator: " · "))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -204,6 +206,7 @@ private struct NoAgentBanner: View {
 
 private struct JobRow: View {
     let job: Job
+    let names: [String: String]
 
     var body: some View {
         HStack(alignment: .top, spacing: 11) {
@@ -220,8 +223,9 @@ private struct JobRow: View {
                         .foregroundStyle(.secondary)
                 }
                 HStack(spacing: 6) {
-                    Label(job.enabled ? (job.schedule?.summary ?? tr("Invalid schedule")) : tr("Inactive"),
-                          systemImage: job.enabled ? "calendar" : "pause")
+                    Label(job.enabled ? job.triggerSummary(names: names) : tr("Inactive"),
+                          systemImage: !job.enabled ? "pause" : job.schedule != nil ? "calendar"
+                            : !job.triggers.after.isEmpty ? "arrow.turn.down.right" : job.triggers.watch.isEmpty ? "person.crop.circle" : "eye")
                         .lineLimit(1)
                     Spacer(minLength: 4)
                     if let run = job.history.first {
@@ -252,6 +256,7 @@ private struct JobDetail: View {
     @State private var draft = ""
     @State private var savedText = ""
     @State private var showingChallenge = false
+    @State private var restoreCandidate: PromptHistory.Version?
 
     enum MetaField {
         case name, about
@@ -321,6 +326,21 @@ private struct JobDetail: View {
                         } else if let schedule = job.schedule {
                             Pill(systemImage: "calendar", text: schedule.summary, tint: .brand)
                         }
+                        ForEach(job.triggers.after, id: \.self) { other in
+                            if let name = store.jobNames[other] {
+                                Pill(systemImage: "arrow.turn.down.right", text: tr("after %@", name), tint: .brand)
+                                    .help(tr("Runs when \u{201C}%@\u{201D} succeeds", name))
+                            } else {
+                                Pill(systemImage: "exclamationmark.triangle.fill", text: tr("after: no job \"%@\".", other), tint: .red)
+                            }
+                        }
+                        if !job.triggers.watch.isEmpty {
+                            Pill(systemImage: "eye", text: job.triggers.watch.joined(separator: ", "), tint: .brand)
+                                .help(tr("Runs when one of these paths changes"))
+                        }
+                        if job.triggers.atLogin {
+                            Pill(systemImage: "person.crop.circle", text: tr("at login"), tint: .brand)
+                        }
                         if let agentError = job.agentError {
                             Pill(systemImage: "exclamationmark.triangle.fill", text: agentError, tint: .red)
                         } else if !store.isInstalled(job.agent) {
@@ -339,6 +359,18 @@ private struct JobDetail: View {
                         Pill(systemImage: "folder", text: job.workdir)
                         if let model = job.model {
                             Pill(systemImage: "cpu", text: model)
+                        }
+                        if let timeout = job.meta["timeout"], !timeout.isEmpty {
+                            Pill(systemImage: "hourglass", text: timeout)
+                                .help(tr("A run is stopped after %@", timeout))
+                        }
+                        if let budget = RunKeys.budget(job.meta["budget"]) {
+                            Pill(systemImage: "dollarsign.circle", text: tr("%@ / 24 h", RunFormat.cost(budget)))
+                                .help(tr("Runs are skipped once the last 24 hours cost this much"))
+                        }
+                        if let notify = job.meta["notify"], !notify.isEmpty, notify != "always" {
+                            Pill(systemImage: notify == "never" ? "bell.slash" : "bell.badge", text: notify)
+                                .help(tr("Notifications: %@", notify))
                         }
                     }
                 }
@@ -377,14 +409,16 @@ private struct JobDetail: View {
                     StatTile(title: tr("Next run"), systemImage: "clock", value: L10n.relative(next), detail: L10n.date(next))
                 } else {
                     StatTile(title: tr("Next run"), systemImage: "clock",
-                             value: job.enabled ? (job.schedule?.summary ?? "—") : tr("Inactive"),
+                             value: job.enabled ? job.triggerSummary(names: store.jobNames) : tr("Inactive"),
                              detail: job.enabled ? "" : tr("Turn it on to schedule it"))
                 }
                 if let run = job.history.first {
                     StatTile(title: tr("Last run"), systemImage: RunFormat.symbol(run),
                              value: RunFormat.outcome(run),
-                             detail: [L10n.relative(run.startedAt), RunFormat.duration(run)].compactMap { $0 }.joined(separator: " · "),
-                             tint: run.exitCode == 0 ? .green : run.exitCode == nil ? .blue : .red)
+                             detail: [L10n.relative(run.startedAt), RunFormat.duration(run),
+                                      run.denied.flatMap { $0 > 0 ? tr("%@ refused", "\($0)") : nil }]
+                                 .compactMap { $0 }.joined(separator: " · "),
+                             tint: run.skipped != nil ? .orange : run.exitCode == 0 ? .green : run.exitCode == nil ? .blue : .red)
                 } else {
                     StatTile(title: tr("Last run"), systemImage: "circle.dashed", value: tr("Never run"), detail: "")
                 }
@@ -392,6 +426,13 @@ private struct JobDetail: View {
                 StatTile(title: tr("Success rate"), systemImage: "chart.bar.fill",
                          value: finished.isEmpty ? "—" : "\(finished.filter { $0.exitCode == 0 }.count * 100 / finished.count) %",
                          detail: tr("over %@ runs", "\(finished.count)"))
+                if job.history.contains(where: { $0.costUSD != nil }) {
+                    let monthAgo = Calendar.current.date(byAdding: .day, value: -30, to: .now) ?? .distantPast
+                    let last = job.history.first { $0.costUSD != nil }
+                    StatTile(title: tr("Cost"), systemImage: "dollarsign.circle",
+                             value: RunFormat.cost(job.cost(since: monthAgo)),
+                             detail: tr("30 days") + (last.map { " · " + tr("last run %@", [RunFormat.cost($0.costUSD ?? 0), RunFormat.tokens($0)].compactMap { $0 }.joined(separator: ", ")) } ?? ""))
+                }
             }
         }
     }
@@ -542,6 +583,20 @@ private struct JobDetail: View {
                     .font(.caption)
                     .foregroundStyle(draftCheck.ok ? Color.secondary : Color.red)
                 Spacer()
+                let versions = PromptHistory.versions(job)
+                if versions.count > 1 {
+                    Menu(tr("Versions")) {
+                        ForEach(versions.dropFirst()) { version in
+                            Button("\(L10n.date(version.date)) — \(version.message) (\(version.rev))") {
+                                restoreCandidate = version
+                            }
+                        }
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.glass)
+                    .fixedSize()
+                    .help(tr("Every saved prompt.md, newest first; each run names the version it ran"))
+                }
                 Button(tr("Open in editor")) { NSWorkspace.shared.open(job.promptURL) }
                     .buttonStyle(.glass)
                 Button(tr("Discard changes")) { draft = savedText }
@@ -556,6 +611,19 @@ private struct JobDetail: View {
             .padding([.horizontal, .bottom], 14)
         }
         .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .confirmationDialog(tr("Restore this version of prompt.md?"), isPresented: Binding(
+            get: { restoreCandidate != nil },
+            set: { if !$0 { restoreCandidate = nil } }
+        ), presenting: restoreCandidate) { version in
+            Button(tr("Restore")) {
+                store.restore(job, to: version)
+                draft = diskText
+                savedText = draft
+            }
+            Button(tr("Cancel"), role: .cancel) {}
+        } message: { version in
+            Text(tr("The version of %@ (%@) becomes the current prompt. The current one stays in the history.", L10n.date(version.date), version.rev))
+        }
     }
 
     private var diskText: String {
@@ -580,9 +648,18 @@ private struct JobDetail: View {
         if let problem = agent.agent.problems(prompt.meta).first {
             return (false, problem)
         }
+        if let problem = RunKeys.problems(prompt.meta, id: job.id, jobIDs: Set(store.jobs.map(\.id))).first {
+            return (false, problem)
+        }
+        let triggers = Triggers(prompt.meta)
+        let scheduleText = prompt.meta["schedule"] ?? ""
+        let unsaved = isDirty ? tr(" — not saved (⌘S)") : ""
+        if scheduleText.trimmingCharacters(in: .whitespaces).isEmpty, !triggers.isEmpty {
+            return (true, triggers.summary(names: store.jobNames).capitalizedFirstLetter + unsaved)
+        }
         do {
-            let schedule = try Schedule.parse(prompt.meta["schedule"] ?? "")
-            return (true, tr("Schedule: %@", schedule.summary) + (isDirty ? tr(" — not saved (⌘S)") : ""))
+            let schedule = try Schedule.parse(scheduleText)
+            return (true, tr("Schedule: %@", schedule.summary) + (triggers.isEmpty ? "" : " · " + triggers.summary(names: store.jobNames)) + unsaved)
         } catch let error as ScheduleError {
             return (false, error.message)
         } catch {
@@ -592,10 +669,8 @@ private struct JobDetail: View {
 
     private func save() {
         do {
-            try draft.write(to: job.promptURL, atomically: true, encoding: .utf8)
+            try store.savePrompt(draft, of: job)
             savedText = draft
-            // An active job's new schedule reaches launchd on this reload.
-            store.reload()
         } catch {
             store.errorMessage = tr("Could not save the prompt: %@", error.localizedDescription)
         }
@@ -671,6 +746,11 @@ private struct ChallengeSheet: View {
     @State private var note = ""
     @State private var agent: Agent = .claude
     @State private var copied = false
+    @State private var resume = true
+
+    /// The run this session would continue, when it is a Claude run with its session.
+    private var resumable: RunStatus? { agent == .claude ? Session.resumableRun(job, log: focus) : nil }
+    private var resumed: RunStatus? { resume ? resumable : nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -697,6 +777,19 @@ private struct ChallengeSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            if let run = resumable {
+                Toggle(isOn: $resume) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tr("Continue the run's own session"))
+                        Text(tr("The agent that ran it on %@ answers, with all it saw and did. Off: a new session, given the brief.", L10n.date(run.startedAt)))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .toggleStyle(.switch)
+                .tint(.brand)
+            }
             Picker(tr("Agent"), selection: $agent) {
                 ForEach(Agent.allCases, id: \.self) { agent in
                     Text(store.isInstalled(agent) ? agent.displayName : tr("%@ (not installed)", agent.displayName))
@@ -707,7 +800,7 @@ private struct ChallengeSheet: View {
             .fixedSize()
             HStack {
                 Button(copied ? tr("Copied") : tr("Copy the command"), systemImage: copied ? "checkmark" : "doc.on.doc") {
-                    if let command = Session.start(job, agent: agent, note: note, focus: focus, store: store, open: false) {
+                    if let command = Session.start(job, agent: agent, note: note, focus: focus, resume: resumed, store: store, open: false) {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(command, forType: .string)
                         copied = true
@@ -720,7 +813,7 @@ private struct ChallengeSheet: View {
                     .buttonStyle(.glass)
                 Button(tr("Open the session")) {
                     dismiss()
-                    Session.start(job, agent: agent, note: note, focus: focus, store: store)
+                    Session.start(job, agent: agent, note: note, focus: focus, resume: resumed, store: store)
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.glassProminent)

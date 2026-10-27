@@ -17,9 +17,10 @@ enum CLI {
                         on: no guardrails — the agent approves every call, no sandbox
                         (claude bypassPermissions · codex danger-full-access · gemini yolo);
                         off: back to the permissions written in prompt.md
-      session <id> [agent]
-                        open an AI session on the job in this terminal, its brief
-                        as the first message (agent: claude, codex or gemini)
+      session <id> [agent] [--fresh]
+                        open an AI session on the job in this terminal: Claude
+                        continues the last run's own session; otherwise (or with
+                        --fresh) a new session given the brief (agent: claude, codex or gemini)
       brief <id>        print what an AI needs to challenge the job: schedule,
                         permissions, last runs and reports, the prompt
       run <id>          run it now in the foreground; prints its log, exits with its code
@@ -34,6 +35,16 @@ enum CLI {
       workdir: ~/projects/my-app
       agent: claude                (optional: claude, codex or gemini; claude when absent)
       model: sonnet                (optional)
+      …what else starts it (schedule may then be left out):
+      after: triage                (when that job succeeds; a list works: a, b)
+      watch: ~/inbox               (when one of these paths changes)
+      atLogin: true                (at login, and when switched on)
+      …run settings, any agent:
+      timeout: 45m                 (stop a run after 90s · 45m · 2h)
+      budget: 5                    (skip runs once Claude runs cost $5 over 24 hours)
+      notify: changes              (always · failure · changes · never; changes = a failure,
+                                    or a report that differs and does not start with NOTHING)
+      webhook: https://hooks.slack.com/…   (POSTs {"text": …} with each notification)
       args: --verbose              (optional: more options for the agent's command line, as you would type them)
       …the agent's permissions:
         claude  allowedTools: "Bash(gh pr list:*),Bash(gh pr view:*)"   permissionMode: default | acceptEdits | auto | dontAsk | bypassPermissions
@@ -48,7 +59,7 @@ enum CLI {
         switch (args.first, args.count) {
         case ("list", 1):
             for job in store.jobs {
-                let schedule = job.schedule?.summary ?? "INVALID schedule"
+                let schedule = job.scheduleError == nil ? job.triggerSummary(names: store.jobNames) : "INVALID schedule"
                 print("\(job.id)\t\(job.enabled ? "active" : "inactive")\t\(stateText(job))\t\(schedule)\t\(job.name)")
             }
             return 0
@@ -104,12 +115,13 @@ enum CLI {
                   ? "\(job.id): no guardrails (\(setting.key): \(setting.value))"
                   : "\(job.id): guardrails back (\(setting.key) removed)")
             return 0
-        case ("session", 2), ("session", 3):
+        case ("session", 2...4):
             guard let job = find(args[1], in: store) else { return 1 }
             var agent = store.sessionAgent(for: job)
-            if args.count == 3 {
-                guard let chosen = Agent(rawValue: args[2].lowercased()) else {
-                    printError("unknown agent \"\(args[2])\": claude, codex or gemini")
+            let fresh = args.contains("--fresh")
+            for arg in args.dropFirst(2) where arg != "--fresh" {
+                guard let chosen = Agent(rawValue: arg.lowercased()) else {
+                    printError("unknown agent \"\(arg)\": claude, codex or gemini")
                     return 2
                 }
                 agent = chosen
@@ -118,7 +130,12 @@ enum CLI {
                 printError("\(agent.rawValue) is not installed; see \(agent.installURL.absoluteString)")
                 return 1
             }
-            guard let command = Session.start(job, agent: agent, note: nil, focus: job.logs.first, store: store, open: false) else {
+            let resume = fresh ? nil : Session.resumableRun(job, log: nil)
+            if let resume {
+                print("continuing the run of \(L10n.date(resume.startedAt)) (session \(resume.sessionId ?? "?")); --fresh for a new session")
+            }
+            guard let command = Session.start(job, agent: agent, note: nil, focus: job.logs.first, resume: resume,
+                                              store: store, open: false) else {
                 printError(store.errorMessage ?? "could not prepare the session")
                 return 1
             }
@@ -158,9 +175,18 @@ enum CLI {
             if let next = schedule.nextRun(after: .now) {
                 print("next run:     \(L10n.date(next))")
             }
-        } else {
-            problems.append("schedule: \(job.scheduleError ?? "invalid")")
+        } else if let error = job.scheduleError {
+            problems.append("schedule: \(error)")
         }
+        if !job.triggers.isEmpty {
+            print("also starts:  \(job.triggers.summary(names: JobStore.shared.jobNames))")
+        }
+        for key in ["timeout", "budget", "notify", "webhook"] {
+            if let value = job.meta[key], !value.isEmpty {
+                print("\(key):\(String(repeating: " ", count: 13 - key.count))\(value)")
+            }
+        }
+        problems += RunKeys.problems(job.meta, id: job.id, jobIDs: Set(JobStore.shared.jobs.map(\.id)))
         var isDirectory: ObjCBool = false
         if FileManager.default.fileExists(atPath: job.expandedWorkdir, isDirectory: &isDirectory), isDirectory.boolValue {
             print("workdir:      \(job.workdir)")
@@ -184,6 +210,10 @@ enum CLI {
         print("model:        \(job.model ?? "(default)")")
         print("active:       \(job.enabled ? "yes" : "no")")
         print("last run:     \(job.lastRunText)\(job.logs.first.map { " — \($0.path)" } ?? "")")
+        let monthAgo = Calendar.current.date(byAdding: .day, value: -30, to: .now) ?? .distantPast
+        if job.history.contains(where: { $0.costUSD != nil }) {
+            print("cost:         \(RunFormat.cost(job.cost(since: monthAgo))) over 30 days")
+        }
         if job.prompt.isEmpty {
             problems.append("prompt: empty body after the frontmatter")
         }

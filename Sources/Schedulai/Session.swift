@@ -31,8 +31,17 @@ enum Session {
                 when += ", next run \(next.formatted(date: .abbreviated, time: .shortened))"
             }
             lines.append(when)
-        } else {
-            lines.append("- schedule: `\(job.scheduleText)` — invalid: \(job.scheduleError ?? "?")")
+        } else if let error = job.scheduleError {
+            lines.append("- schedule: `\(job.scheduleText)` — invalid: \(error)")
+        }
+        if !job.triggers.isEmpty {
+            lines.append("- also started: \(job.triggers.summary(names: store.jobNames))")
+        }
+        let guards = ["timeout", "budget", "notify", "webhook"].compactMap { key in
+            job.meta[key].flatMap { $0.isEmpty ? nil : "\(key): \(key == "webhook" ? "(set)" : $0)" }
+        }
+        if !guards.isEmpty {
+            lines.append("- run settings: \(guards.joined(separator: ", "))")
         }
         lines.append("- active: \(job.enabled ? "yes" : "no (paused)")")
         lines.append("- agent: \(job.agent.rawValue); permissions: \(job.agent.permissions(job.meta))")
@@ -48,7 +57,14 @@ enum Session {
                 case 0?: outcome = "OK"
                 case let code?: outcome = "FAILED (exit \(code))"
                 }
-                lines.append("- \(run.startedAt.formatted(date: .abbreviated, time: .shortened)) — \(outcome)\(run.log.map { " — `\($0)`" } ?? "")")
+                var details = [outcome]
+                if run.skipped != nil { details = ["skipped: budget reached"] }
+                if run.timedOut == true { details = ["stopped by timeout"] }
+                if let cost = run.costUSD { details.append(String(format: "$%.2f", cost)) }
+                if let denied = run.denied, denied > 0 { details.append("\(denied) call(s) refused by its permissions") }
+                if let after = run.after { details.append("started by \(after)") }
+                if let rev = run.promptRev { details.append("prompt \(rev)") }
+                lines.append("- \(run.startedAt.formatted(date: .abbreviated, time: .shortened)) — \(details.joined(separator: " · "))\(run.log.map { " — `\($0)`" } ?? "")")
             }
         }
 
@@ -68,17 +84,56 @@ enum Session {
             }
         }
 
+        let versions = PromptHistory.versions(job, limit: 8)
+        if versions.count > 1 {
+            lines.append("\n## prompt.md history, newest first\n")
+            for version in versions {
+                lines.append("- `\(version.rev)` \(version.date.formatted(date: .abbreviated, time: .shortened)) — \(version.message)")
+            }
+            lines.append("\nWhat changed: `git -C \(job.dir.deletingLastPathComponent().path) diff <rev> -- \(job.id)/prompt.md`.")
+        }
+
         let promptText = (try? String(contentsOf: job.promptURL, encoding: .utf8)) ?? ""
         lines.append("\n## prompt.md as it is now\n")
         lines.append(fenced(promptText.trimmingCharacters(in: .whitespacesAndNewlines), language: "markdown"))
 
-        lines.append("\n## What I need from you\n")
+        lines.append(needs(job, note: note, first: """
+        Start with three lines: what the job does, and what its last runs show — \
+        failures, items it skipped, a "nothing to do" that looks wrong.
+        """))
+        return lines.joined(separator: "\n")
+    }
+
+    /// The message that opens a resumed run: the session already holds what the
+    /// run did, so this only says where it ran, how it ended and what to do now.
+    static func resumeMessage(_ job: Job, run: RunStatus, note: String?, store: JobStore) -> String {
+        var lines: [String] = []
+        lines.append("""
+        Stop being the scheduled run. This session was SchedulAI's scheduled job \
+        `\(job.id)` (\(job.name)): headless, the prompt from `\(job.promptURL.path)`, \
+        nobody at the keyboard, and only these permissions: \(job.agent.permissions(job.meta)). \
+        I am at the keyboard now, to challenge what that run did.
+        """)
+        var ended = RunFormat.outcome(run)
+        if let denied = run.denied, denied > 0 { ended += ", \(denied) call(s) refused by its permissions" }
+        lines.append("\nThe run started \(run.startedAt.formatted(date: .abbreviated, time: .shortened)) and ended: \(ended).")
+        if let rev = run.promptRev, let current = PromptHistory.versions(job, limit: 1).first?.rev, rev != current {
+            lines.append("prompt.md has changed since (`\(rev)` then, `\(current)` now): `git -C \(job.dir.deletingLastPathComponent().path) diff \(rev) -- \(job.id)/prompt.md`.")
+        }
+        lines.append(needs(job, note: note, first: """
+        Start with three lines: what you did in that run, what you skipped or could \
+        not do, and why.
+        """))
+        return lines.joined(separator: "\n")
+    }
+
+    private static func needs(_ job: Job, note: String?, first: String) -> String {
+        var lines = ["\n## What I need from you\n"]
         if let note = note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty {
             lines.append("What is wrong, in my words: **\(note)**\n")
         }
         lines.append("""
-        1. Start with three lines: what the job does, and what its last runs show — \
-        failures, items it skipped, a "nothing to do" that looks wrong.
+        1. \(first)
         2. \(note?.isEmpty == false ? "Find the cause of what I described." : "Then ask me what went wrong or what to change.") \
         Reproduce the job's steps here, read-only, to see what it saw. Remember the \
         scheduled run can only do what its permissions allow: a step that needs more is \
@@ -95,15 +150,27 @@ enum Session {
         return lines.joined(separator: "\n")
     }
 
+    /// The run a session can resume: Claude runs report their session id.
+    static func resumableRun(_ job: Job, log: URL?) -> RunStatus? {
+        guard job.agent == .claude else { return nil }
+        if let log {
+            return job.history.first { $0.log == log.lastPathComponent && $0.sessionId != nil }
+        }
+        return job.history.first { $0.sessionId != nil }
+    }
+
     /// The interactive command line of `agent`, `brief` being its first message.
-    static func command(_ agent: Agent, job: Job, brief: URL, store: JobStore) -> String {
+    static func command(_ agent: Agent, job: Job, brief: URL, resume: String? = nil, store: JobStore) -> String {
         let executable = shellQuoted(store.agentPaths?[agent] ?? agent.rawValue)
         let jobDir = shellQuoted(job.dir.path)
         let message = "\"$(cat \(shellQuoted(brief.path)))\""
         // The message first: claude's --add-dir takes every argument after it
         // as one more directory.
         switch agent {
-        case .claude: return "\(executable) \(message) --add-dir \(jobDir)"
+        case .claude:
+            // --resume finds the session from the directory it ran in: the job's workdir, where the launcher starts.
+            let resumeFlag = resume.map { "--resume \(shellQuoted($0)) " } ?? ""
+            return "\(executable) \(resumeFlag)\(message) --add-dir \(jobDir)"
         case .codex: return "\(executable) \(message) --add-dir \(jobDir)"
         case .gemini: return "\(executable) -i \(message) --include-directories \(jobDir)"
         }
@@ -113,11 +180,14 @@ enum Session {
     /// launcher in the user's terminal (the app that opens `.command` files).
     /// Returns the command, for "Copy the command".
     @discardableResult
-    static func start(_ job: Job, agent: Agent, note: String?, focus: URL?, store: JobStore, open: Bool = true) -> String? {
+    /// `resume`: a Claude run to continue (its session), instead of a fresh session given the brief.
+    static func start(_ job: Job, agent: Agent, note: String?, focus: URL?, resume: RunStatus? = nil,
+                      store: JobStore, open: Bool = true) -> String? {
+        let resume = agent == .claude ? resume : nil
         let dir = job.dir.appending(path: ".session")
         let briefURL = dir.appending(path: "brief.md")
         let launcher = dir.appending(path: "start.command")
-        let line = command(agent, job: job, brief: briefURL, store: store)
+        let line = command(agent, job: job, brief: briefURL, resume: resume?.sessionId, store: store)
         let script = """
         #!/bin/zsh -l
         # Written by SchedulAI: an interactive \(agent.displayName) session on the job "\(job.name)".
@@ -127,7 +197,9 @@ enum Session {
         """
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try brief(job, note: note, focus: focus, store: store).write(to: briefURL, atomically: true, encoding: .utf8)
+            let text = resume.map { resumeMessage(job, run: $0, note: note, store: store) }
+                ?? brief(job, note: note, focus: focus, store: store)
+            try text.write(to: briefURL, atomically: true, encoding: .utf8)
             try script.write(to: launcher, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: launcher.path)
         } catch {

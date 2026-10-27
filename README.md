@@ -52,20 +52,43 @@ The prompt. End it with the report you want to read.
 
   `schedulai check <id>` flags a key the job's agent ignores, and an agent that is not installed.
 
-Each run writes `logs/<stamp>.log` (the report), `status.json`, a line of `history.jsonl`, and
-posts a notification.
+What else starts a job, with or without a `schedule:`:
+
+| Key | Runs it |
+|---|---|
+| `after: triage` | when that job succeeds (a list works: `a, b`; a loop stops where it started) |
+| `watch: ~/inbox` | when one of these paths changes (launchd `WatchPaths`) |
+| `atLogin: true` | at login, and when it is switched on |
+
+And how it runs, whatever the agent:
+
+| Key | Does |
+|---|---|
+| `timeout: 45m` | stops a run after that long (`90s`, `45m`, `2h`) |
+| `budget: 5` | skips runs once Claude runs cost $5 over the last 24 hours |
+| `notify: changes` | `always` (default), `failure`, `changes` — a failure, or a report that differs from the last one and does not start with `NOTHING` — or `never` |
+| `webhook: https://…` | POSTs `{"text": …}` (Slack's incoming-webhook format) with each notification |
+
+Each run writes `logs/<stamp>.log` (the report), `status.json` and a line of `history.jsonl`. A
+Claude run also records what it cost, its tokens, its session (to resume it) and the calls its
+permissions refused — listed at the end of its report. Every change to a prompt.md is committed
+to a git repository in `~/.claude/scheduled`, and each run names the version it ran.
 
 ## The app
 
 - **Window** — every job with its state, next run, success rate and last runs; the report
   rendered from Markdown (or raw); the prompt editable in place, name and description included;
   right-click a job (or press Delete) to run, pause or delete it — its folder goes to the Trash.
-- **Challenge with AI** — a job did the wrong thing? Open an interactive Claude Code, Codex or
-  Gemini session on it, in its workdir, whose first message is the job's brief: schedule,
-  permissions, last runs, the reports (the one you were reading first), the prompt, and what you
-  say went wrong. The session reproduces what the run saw, fixes `prompt.md` with you, checks it
-  and offers a test run. It opens in your terminal, or copy its command into your own; from a
-  terminal, `schedulai session <id>`.
+- **Challenge with AI** — a job did the wrong thing? For a Claude run, continue that run's own
+  session (`claude --resume`): the agent that did it explains what it did and why. Otherwise, open
+  a new Claude Code, Codex or Gemini session in its workdir whose first message is the job's
+  brief: schedule, permissions, last runs with their cost and refused calls, the reports (the one
+  you were reading first), the prompt and its history, and what you say went wrong. Either way the
+  session fixes `prompt.md` with you, checks it and offers a test run. It opens in your terminal,
+  or copy its command into your own; from a terminal, `schedulai session <id> [--fresh]`.
+- **Cost** — each job shows its last 30 days and its last run's cost and tokens; the sidebar,
+  this month's total.
+- **Versions** — the prompt editor lists every saved version; restore one in a click.
 - **Menu bar** — a clock with a sparkle (a dot when a run failed); its menu lists the jobs,
   runs or pauses them, and holds *Open at login*, *Language* and *Check for Updates…*.
 - **Dock** — a badge counts the failed jobs; right-click for the same job menu.

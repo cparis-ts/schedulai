@@ -40,12 +40,26 @@ asks for another: set `agent:` accordingly (`claude` is the default when absent)
 sentence the user will recognise in a list). `schedule`: `08:00`, `daily 08:00`, `weekdays 08:00`, `mon,thu 09:30` (French day
   names work too), `08:00, 14:00`, `every 30m`, `every 2h`. `model` is optional
   and is passed as is to the agent.
+- Other triggers, with or without a `schedule:` — `after: <id>` runs it when
+  that job succeeds (a list works; loops stop at their start), `watch: ~/inbox`
+  when a path changes, `atLogin: true` at login.
+- Run settings, any agent: `timeout: 45m` stops a run (`90s`, `2h`); `budget: 5`
+  skips runs once Claude runs cost $5 over the last 24 hours — set both on a
+  long or no-guardrails job. `notify:` is `always` (default), `failure`,
+  `changes` (a failure, or a report that differs from the last one and does not
+  start with `NOTHING` — so end a "nothing to do" report with a first line
+  `NOTHING`), or `never`. `webhook: <url>` posts `{"text": …}` (Slack's
+  incoming-webhook format) with each notification.
 - The `schedulai` command (in `~/.local/bin`) — always use it rather than writing
   a plist yourself; it runs the app's own code:
   `list` · `check <id>` · `run <id>` (foreground, prints the log, exits with its
-  code) · `enable <id>` · `disable <id>` · `dir`.
-- Each run writes `<id>/logs/<stamp>.log` (the agent's final answer),
-  `status.json`, and posts a macOS notification with the end of that answer.
+  code) · `enable <id>` · `disable <id>` · `bypass <id> on|off` · `brief <id>` · `dir`.
+- Each run writes `<id>/logs/<stamp>.log` (the agent's final answer; a Claude
+  run appends the calls its permissions refused), a line of `history.jsonl`
+  (cost, tokens, session id, the prompt version it ran), and notifies as
+  `notify:` says.
+- Every prompt.md change is committed to `~/.claude/scheduled/.git`:
+  `git -C "$(schedulai dir)" log -p -- <id>/prompt.md` shows what changed and when.
 
 ## Workflow
 

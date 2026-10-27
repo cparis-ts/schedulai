@@ -116,6 +116,8 @@ enum RunFormat {
     }
 
     static func outcome(_ run: RunStatus) -> String {
+        if run.skipped != nil { return tr("Skipped (budget)") }
+        if run.timedOut == true { return tr("Timed out") }
         switch run.exitCode {
         case 0?: return "OK"
         case let code?: return tr("Failed (%@)", "\(code)")
@@ -124,6 +126,8 @@ enum RunFormat {
     }
 
     static func symbol(_ run: RunStatus?) -> String {
+        if run?.skipped != nil { return "forward.end.circle" }
+        if run?.timedOut == true { return "hourglass.circle" }
         switch run?.exitCode {
         case 0?: return "checkmark.circle.fill"
         case .some: return "xmark.circle.fill"
@@ -131,8 +135,22 @@ enum RunFormat {
         }
     }
 
-    /// "OK · 21 Oct 2026 at 16:08 · 34 s"
+    /// "$0.42", "$0.003"
+    static func cost(_ dollars: Double) -> String {
+        String(format: dollars > 0 && dollars < 0.01 ? "$%.3f" : "$%.2f", dollars)
+    }
+
+    /// "12k tokens"
+    static func tokens(_ run: RunStatus) -> String? {
+        guard run.inputTokens != nil || run.outputTokens != nil else { return nil }
+        let total = (run.inputTokens ?? 0) + (run.outputTokens ?? 0)
+        return tr("%@ tokens", total >= 1000 ? "\(total / 1000)k" : "\(total)")
+    }
+
+    /// "OK · 21 Oct 2026 at 16:08 · 34 s · $0.42 · 2 refused"
     static func line(_ run: RunStatus) -> String {
-        [outcome(run), L10n.date(run.startedAt), duration(run)].compactMap { $0 }.joined(separator: " · ")
+        [outcome(run), L10n.date(run.startedAt), duration(run), run.costUSD.map(cost),
+         run.denied.flatMap { $0 > 0 ? tr("%@ refused", "\($0)") : nil }]
+            .compactMap { $0 }.joined(separator: " · ")
     }
 }

@@ -43,6 +43,9 @@ final class JobStore {
         return parts.isEmpty ? tr("All good.") : parts.joined(separator: " · ").capitalizedFirst + "."
     }
 
+    /// Job id → name, for "after Triage".
+    var jobNames: [String: String] { Dictionary(jobs.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a }) }
+
     var menuBarBadge: Icons.Badge {
         if jobs.contains(where: { $0.state == .failed }) { return .failure }
         if jobs.contains(where: { $0.state == .running }) { return .running }
@@ -64,6 +67,10 @@ final class JobStore {
         installRunner()
         migrateLegacyAgents()
         reload()
+        if !Self.headless {
+            // A first version of every prompt, and whatever changed while the app was closed.
+            for job in jobs { PromptHistory.commit(job, "edited outside SchedulAI") }
+        }
         if Self.headless {
             agentPaths = Self.resolveAgents(runner: runner)
             return
@@ -124,14 +131,18 @@ final class JobStore {
         let text = (try? String(contentsOf: dir.appending(path: "prompt.md"), encoding: .utf8)) ?? ""
         let prompt = PromptFile.parse(text)
         let scheduleText = prompt.meta["schedule"] ?? ""
+        let triggers = Triggers(prompt.meta)
         var schedule: Schedule?
         var scheduleError: String?
-        do {
-            schedule = try Schedule.parse(scheduleText)
-        } catch let error as ScheduleError {
-            scheduleError = error.message
-        } catch {
-            scheduleError = "\(error)"
+        // No schedule is fine when another trigger starts the job.
+        if !scheduleText.trimmingCharacters(in: .whitespaces).isEmpty || triggers.isEmpty {
+            do {
+                schedule = try Schedule.parse(scheduleText)
+            } catch let error as ScheduleError {
+                scheduleError = error.message
+            } catch {
+                scheduleError = "\(error)"
+            }
         }
 
         let decoder = JSONDecoder()
@@ -164,6 +175,7 @@ final class JobStore {
             scheduleText: scheduleText,
             schedule: schedule,
             scheduleError: scheduleError,
+            triggers: triggers,
             workdir: prompt.meta["workdir"] ?? "~",
             agent: agent.agent,
             agentError: agent.error,
@@ -226,7 +238,7 @@ final class JobStore {
 
     func setEnabled(_ job: Job, _ enabled: Bool) {
         if enabled {
-            guard job.schedule != nil else {
+            guard job.hasTrigger, job.scheduleError == nil else {
                 errorMessage = job.scheduleError ?? tr("Invalid schedule.")
                 return
             }
@@ -290,6 +302,7 @@ final class JobStore {
         defer { reload() }
         do {
             try fm.trashItem(at: job.dir, resultingItemURL: nil)
+            PromptHistory.commit(job, "deleted")
             return true
         } catch {
             errorMessage = tr("Could not delete the cron: %@", error.localizedDescription)
@@ -374,7 +387,35 @@ final class JobStore {
             return nil
         }
         reload()
+        if let job = jobs.first(where: { $0.id == slug }) { PromptHistory.commit(job, "created") }
         return slug
+    }
+
+    /// The editor's Save: writes the prompt, versions it, and reloads (an
+    /// active job's new schedule reaches launchd there).
+    func savePrompt(_ text: String, of job: Job, message: String = "edited in SchedulAI") throws {
+        try text.write(to: job.promptURL, atomically: true, encoding: .utf8)
+        PromptHistory.commit(job, message)
+        reload()
+    }
+
+    /// Puts back an earlier prompt.md, as a new version (the newer ones stay in the history).
+    func restore(_ job: Job, to version: PromptHistory.Version) {
+        guard let text = PromptHistory.text(job, at: version.rev) else {
+            errorMessage = tr("Could not read version %@.", version.rev)
+            return
+        }
+        do {
+            try savePrompt(text, of: job, message: "restored \(version.rev)")
+        } catch {
+            errorMessage = tr("Could not save the prompt: %@", error.localizedDescription)
+        }
+    }
+
+    /// What every job's Claude runs cost this calendar month.
+    var monthCost: Double {
+        let start = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .distantPast
+        return jobs.map { $0.cost(since: start) }.reduce(0, +)
     }
 
     func dockMenu() -> NSMenu {
@@ -395,6 +436,7 @@ final class JobStore {
         do {
             let text = try String(contentsOf: job.promptURL, encoding: .utf8)
             try PromptFile.setting(key, to: value, in: text).write(to: job.promptURL, atomically: true, encoding: .utf8)
+            PromptHistory.commit(job, value.map { "\(key): \($0)" } ?? "\(key) removed")
         } catch {
             errorMessage = tr("Could not change %@: %@", key, error.localizedDescription)
         }
@@ -429,14 +471,17 @@ final class JobStore {
 
     /// Writes the job's LaunchAgent and (re)loads it when its content changed.
     private func syncAgent(_ job: Job) {
-        guard let schedule = job.schedule else { return }
+        guard job.hasTrigger, job.scheduleError == nil else { return }
         var dict: [String: Any] = [
             "Label": job.label,
             "ProgramArguments": ["/bin/zsh", runner.path, job.dir.path],
             "StandardOutPath": job.dir.appending(path: "logs/launchd.out").path,
             "StandardErrorPath": job.dir.appending(path: "logs/launchd.err").path,
         ]
-        dict.merge(schedule.launchdKeys) { $1 }
+        if let schedule = job.schedule { dict.merge(schedule.launchdKeys) { $1 } }
+        // `after:` needs nothing here: the other job's runner kickstarts this label.
+        if !job.triggers.watch.isEmpty { dict["WatchPaths"] = job.triggers.watch.map(Triggers.expand) }
+        if job.triggers.atLogin { dict["RunAtLoad"] = true }
         guard let data = try? PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0) else {
             return
         }

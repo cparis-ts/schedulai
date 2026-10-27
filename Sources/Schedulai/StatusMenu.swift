@@ -106,7 +106,7 @@ enum JobMenu {
         item.toolTip = job.about
 
         let submenu = NSMenu()
-        info(job.schedule?.summary ?? tr("Invalid schedule: %@", job.scheduleText), to: submenu)
+        info(job.triggerSummary(names: store.jobNames), to: submenu)
         if job.enabled, let next = job.schedule?.nextRun(after: .now) {
             info(tr("Next run: %@", L10n.date(next)), to: submenu)
         }
@@ -121,7 +121,8 @@ enum JobMenu {
         }
         submenu.addItem(ClosureMenuItem(tr("Edit prompt…")) { store.showMainWindow(job: job.id, editPrompt: true) })
         submenu.addItem(ClosureMenuItem(tr("Challenge with AI")) {
-            Session.start(job, agent: store.sessionAgent(for: job), note: nil, focus: job.logs.first, store: store)
+            Session.start(job, agent: store.sessionAgent(for: job), note: nil, focus: job.logs.first,
+                          resume: Session.resumableRun(job, log: job.logs.first), store: store)
         })
         submenu.addItem(.separator())
         let toggle = ClosureMenuItem(tr("Active")) { store.setEnabled(job, !job.enabled) }
