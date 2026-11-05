@@ -108,7 +108,20 @@ through the app's own code:
 schedulai list | check <id> | run <id> | enable <id> | disable <id> | delete <id>
 schedulai bypass <id> on|off
 schedulai session <id> [agent] | brief <id> | dir | version
+schedulai digest [--hook] | hooks install|uninstall
 ```
+
+### What ran, told to your Claude Code sessions
+
+`schedulai digest` prints what the jobs did lately: per job, its latest run of the last 48 hours
+with its verdict (the first line of its report), and every failed or permission-refused run of
+the last 72 hours with its log; nothing when nothing ran. It only reads files, so it is fast.
+
+`schedulai hooks install` (Claude Code only) adds two hooks to `~/.claude/settings.json` —
+a backup is kept, everything else stays as it was — so a session learns it without anyone reading
+logs: at its start, the digest; then, with each of your messages, only the runs that session has
+not seen yet (nothing when there are none). `schedulai hooks uninstall` removes them.
+`scripts/verify-digest.sh` checks both on copies of your jobs and settings.
 
 ## Install
 

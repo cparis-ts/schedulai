@@ -53,7 +53,8 @@ sentence the user will recognise in a list). `schedule`: `08:00`, `daily 08:00`,
 - The `schedulai` command (in `~/.local/bin`) — always use it rather than writing
   a plist yourself; it runs the app's own code:
   `list` · `check <id>` · `run <id>` (foreground, prints the log, exits with its
-  code) · `enable <id>` · `disable <id>` · `bypass <id> on|off` · `brief <id>` · `dir`.
+  code) · `enable <id>` · `disable <id>` · `bypass <id> on|off` · `brief <id>` · `dir`
+  · `digest` (what ran lately, below) · `hooks install|uninstall`.
 - Each run writes `<id>/logs/<stamp>.log` (the agent's final answer; a Claude
   run appends the calls its permissions refused), a line of `history.jsonl`
   (cost, tokens, session id, the prompt version it ran), and notifies as
@@ -164,6 +165,17 @@ schedulai enable "$id"                 # prints the next run
 Tell the user, in French: the job's name, when it runs (and the next run), what
 it may change, where the logs are, and that the app (Dock / menu bar) shows its
 state and lets them pause it.
+
+## What the jobs did — `schedulai digest`
+
+`schedulai digest` prints, per job, its latest run of the last 48 h and its
+verdict (first line of its report), plus every failed or permission-refused run
+of the last 72 h with its log — nothing when nothing ran. When the user asks
+what ran, start there rather than reading logs. `schedulai hooks install`
+(Claude Code only) puts it in `~/.claude/settings.json`: each session then gets
+the digest at its start, and with each user message only the runs it has not
+seen yet; `schedulai hooks uninstall` takes it out. A line starting with
+`[schedulai]` in your context comes from these hooks.
 
 ## Changing an existing job
 
