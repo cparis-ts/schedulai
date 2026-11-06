@@ -24,6 +24,14 @@ enum CLI {
       brief <id>        print what an AI needs to challenge the job: schedule,
                         permissions, last runs and reports, the prompt
       run <id>          run it now in the foreground; prints its log, exits with its code
+      digest [--hook]   what the jobs ran lately, for an AI session to read: per job its
+                        latest run of the last 48 h and its verdict (first line of its log),
+                        every failed or refused run of the last 72 h; nothing when nothing ran.
+                        --hook: read a Claude Code hook's JSON on stdin — SessionStart prints
+                        the digest, UserPromptSubmit only the runs that session has not seen
+      hooks install|uninstall
+                        Claude Code only: add (or remove) the SessionStart and UserPromptSubmit
+                        hooks running `digest --hook` in ~/.claude/settings.json (backup kept)
       dir               print the jobs directory
       version           print the installed version
 
@@ -55,6 +63,12 @@ enum CLI {
     """
 
     static func run(_ args: [String]) -> Int32 {
+        // Before JobStore.shared, whose loading is too slow for a hook run on every prompt.
+        switch args.first {
+        case "digest": return Digest.run(Array(args.dropFirst()))
+        case "hooks": return Hooks.run(Array(args.dropFirst()))
+        default: break
+        }
         let store = JobStore.shared
         switch (args.first, args.count) {
         case ("list", 1):
